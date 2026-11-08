@@ -7,6 +7,7 @@ const ACCEL := 16.0
 const DECEL := 20.0
 const TURN_SPEED := 12.0
 const MODEL_SCALE := 0.30
+const FEET_OFFSET := 0.02
 const ANIMATED_PATH := "res://assets/models/quaternius/AnimatedHuman.fbx"
 const WALKER_PATH := "res://assets/models/walker.glb"
 const SETTLER_PATH := "res://assets/models/settler.glb"
@@ -31,6 +32,10 @@ var _step_timer: float = 0.0
 var _walk_streams: Array[AudioStream] = []
 var _run_streams: Array[AudioStream] = []
 var _rng := RandomNumberGenerator.new()
+## Height follower — set by main. Guarantees all terrain is reachable.
+var terrain: Node = null
+## Shift toggles run/walk (no need to hold).
+var _run_mode: bool = false
 
 
 func _ready() -> void:
@@ -38,14 +43,21 @@ func _ready() -> void:
 	_ensure_input_map()
 	_load_footsteps()
 	_load_model()
-	_label.text = "WASD + Shift"
+	_label.text = "WASD · Shift toggle run"
+	# Don't collide with terrain mesh; we snap to heightfield instead.
+	collision_mask = 0
+	collision_layer = 0
 
 
 func _physics_process(delta: float) -> void:
+	if Input.is_action_just_pressed("sprint"):
+		_run_mode = not _run_mode
+		_label.text = "RUN" if _run_mode else "WALK"
+
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var wish := Vector3(input_dir.x, 0.0, input_dir.y)
 	var moving := wish.length_squared() > 0.0001
-	var want_run := moving and Input.is_action_pressed("sprint")
+	var want_run := moving and _run_mode
 	var speed := RUN_SPEED if want_run else WALK_SPEED
 
 	if moving:
@@ -61,12 +73,20 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0.0, DECEL * delta)
 
 	velocity.y = 0.0
-	move_and_slide()
+	var next := global_position + Vector3(velocity.x, 0.0, velocity.z) * delta
+	next.y = _ground_y(next.x, next.z) + FEET_OFFSET
+	global_position = next
 
 	var speed_xz := Vector2(velocity.x, velocity.z).length()
 	var running := want_run and speed_xz > WALK_SPEED * 0.85
 	_update_anim(speed_xz, running, delta)
 	_update_footsteps(speed_xz, running, delta)
+
+
+func _ground_y(x: float, z: float) -> float:
+	if terrain != null and terrain.has_method("sample_height"):
+		return float(terrain.call("sample_height", x, z))
+	return 0.0
 
 
 func _update_anim(speed_xz: float, running: bool, delta: float) -> void:

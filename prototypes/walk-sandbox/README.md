@@ -5,11 +5,21 @@ Minimal Godot 4.6 prototype for natural on-foot movement.
 ## What you get
 
 - **Quaternius AnimatedHuman** (CC0) with **Idle / Walk / Run** clips
-- Hold **Shift** to run (faster + Run clip + quicker footfalls)
+- **Shift** toggles run (faster + Run clip + quicker footfalls)
 - Soft footstep “da-da” WAVs under `assets/sfx/` (placeholder Foley; swap later)
+- **Day/night time system**: sun disc, moon, stars, drifting clouds, weather
+  - **T** — cycle time speed (`1× → 30× → 120× → 600×`)
+  - **Y** — cycle weather (`Clear → Cloudy → Overcast → Rain`)
 - Smooth acceleration + yaw turn
 - 8-direction move (WASD / arrows)
-- Four colored spots to walk onto
+- **Zoom**: trackpad two-finger scroll (or pinch); mouse wheel / `+` `-` also work
+- Larger ground (**120×120**) with more walk spots
+- **Realistic terrain map** (procedural heightfield with stronger relief):
+  - Biomes: **Sand / Dirt / Grass / Mountain / River**
+  - **Flowing rivers**: downhill flow field + animated water shader (ripples, bank foam, Fresnel)
+  - **All cells walkable** — height-follow (no mesh trapping)
+  - **`MapGenerator.generate_random(seed, opts)`** — abstract random map API
+  - **G** calls `TerrainMap.generate_random()` for a new map
 - Fallback: static `walker.glb` + light bob if FBX import fails
 
 ## Run

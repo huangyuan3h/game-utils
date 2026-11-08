@@ -1,0 +1,65 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/sky_time.gd" id="1_sky"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_sun"]
+radius = 3.5
+height = 7.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="Mat_sun"]
+shading_mode = 0
+albedo_color = Color(1, 0.92, 0.55, 1)
+emission_enabled = true
+emission = Color(1, 0.92, 0.55, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_moon"]
+radius = 2.2
+height = 4.4
+radial_segments = 12
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="Mat_moon"]
+shading_mode = 0
+albedo_color = Color(0.85, 0.88, 0.95, 1)
+emission_enabled = true
+emission = Color(0.75, 0.8, 0.95, 1)
+emission_energy_multiplier = 1.2
+
+[node name="SkyTime" type="Node3D"]
+script = ExtResource("1_sky")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="SunLight" type="DirectionalLight3D" parent="."]
+shadow_enabled = true
+directional_shadow_mode = 1
+light_energy = 1.2
+
+[node name="MoonLight" type="DirectionalLight3D" parent="."]
+light_color = Color(0.65, 0.75, 1, 1)
+light_energy = 0.2
+shadow_enabled = false
+
+[node name="SunDisc" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_sun")
+material_override = SubResource("Mat_sun")
+cast_shadow = 0
+
+[node name="MoonDisc" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_moon")
+material_override = SubResource("Mat_moon")
+cast_shadow = 0
+
+[node name="Stars" type="MultiMeshInstance3D" parent="."]
+cast_shadow = 0
+
+[node name="Clouds" type="Node3D" parent="."]
+
+[node name="Rain" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 900
+lifetime = 0.9
+visibility_aabb = AABB(-30, -5, -30, 60, 40, 60)
