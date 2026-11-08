@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "note": "Curated entry points for realistic / natural game SFX. Prefer recordings and Foley packs over procedural synth.",
+  "needs": [
+    {
+      "id": "ui",
+      "title": "UI clicks / confirms",
+      "suggest": ["kenney-interface", "kenney-ui", "mixkit-sfx"]
+    },
+    {
+      "id": "impact",
+      "title": "Hits, impacts, punches",
+      "suggest": ["kenney-impact", "sonniss-gdc", "freesound"]
+    },
+    {
+      "id": "footsteps",
+      "title": "Footsteps on different surfaces",
+      "suggest": ["sonniss-gdc", "freesound", "mixkit-sfx"]
+    },
+    {
+      "id": "nature",
+      "title": "Nature, wind, rain, birds",
+      "suggest": ["freesound", "sonniss-gdc", "mixkit-sfx"]
+    },
+    {
+      "id": "doors",
+      "title": "Doors, wood, metal, mechanisms",
+      "suggest": ["freesound", "sonniss-gdc"]
+    },
+    {
+      "id": "weapons",
+      "title": "Guns, whooshes, melee",
+      "suggest": ["sonniss-gdc", "freesound", "kenney-impact"]
+    },
+    {
+      "id": "ambience",
+      "title": "Room tone / city / dungeon ambience",
+      "suggest": ["freesound", "sonniss-gdc", "mixkit-sfx"]
+    },
+    {
+      "id": "rpg",
+      "title": "Fantasy / RPG inventory & magic",
+      "suggest": ["kenney-rpg", "kenney-digital", "mixkit-sfx"]
+    }
+  ],
+  "collections": [
+    {
+      "id": "kenney-interface",
+      "name": "Kenney — Interface Sounds",
+      "style": "clean game UI, still sample-based (not chip-synth)",
+      "license": "CC0",
+      "commercial": true,
+      "attribution": "optional",
+      "url": "https://kenney.nl/assets/interface-sounds",
+      "tags": ["ui", "click", "confirm", "pack"],
+      "why": "Consistent short UI sounds; safest license for shipping."
+    },
+    {
+      "id": "kenney-ui",
+      "name": "Kenney — UI Audio",
+      "style": "UI / menu",
+      "license": "CC0",
+      "commercial": true,
+      "attribution": "optional",
+      "url": "https://kenney.nl/assets/ui-audio",
+      "tags": ["ui", "pack"],
+      "why": "Another Kenney UI pack if Interface Sounds is not enough."
+    },
+    {
+      "id": "kenney-impact",
+      "name": "Kenney — Impact Sounds",
+      "style": "hits / impacts",
+      "license": "CC0",
+      "commercial": true,
+      "attribution": "optional",
+      "url": "https://kenney.nl/assets/impact-sounds",
+      "tags": ["impact", "combat", "pack"],
+      "why": "Quick impact bed for prototypes with clear CC0."
+    },
+    {
+      "id": "kenney-rpg",
+      "name": "Kenney — RPG Audio",
+      "style": "fantasy RPG cues",
+      "license": "CC0",
+      "commercial": true,
+      "attribution": "optional",
+      "url": "https://kenney.nl/assets/rpg-audio",
+      "tags": ["rpg", "fantasy", "pack"],
+      "why": "Inventory / spell-ish cues without hunting licenses."
+    },
+    {
+      "id": "kenney-digital",
+      "name": "Kenney — Digital Audio",
+      "style": "digital / soft sci-fi",
+      "license": "CC0",
+      "commercial": true,
+      "attribution": "optional",
+      "url": "https://kenney.nl/assets/digital-audio",
+      "tags": ["sci-fi", "digital", "pack"],
+      "why": "Soft digital FX that still feel designed, not random noise."
+    },
+    {
+      "id": "kenney-scifi",
+      "name": "Kenney — Sci-fi Sounds",
+      "style": "sci-fi",
+      "license": "CC0",
+      "commercial": true,
+      "attribution": "optional",
+      "url": "https://kenney.nl/assets/sci-fi-sounds",
+      "tags": ["sci-fi", "pack"],
+      "why": "Sci-fi set with CC0."
+    },
+    {
+      "id": "mixkit-sfx",
+      "name": "Mixkit — Free Sound Effects",
+      "style": "realistic Foley / everyday / cinematic shorts",
+      "license": "Mixkit Sound Effects Free License",
+      "commercial": true,
+      "attribution": "not required",
+      "url": "https://mixkit.co/free-sound-effects/",
+      "tags": ["nature", "foley", "footsteps", "ambience", "browse"],
+      "why": "No signup; realistic clips; OK in games; do not resell as a pack."
+    },
+    {
+      "id": "sonniss-gdc",
+      "name": "Sonniss — GDC Game Audio Bundles",
+      "style": "pro game/film Foley libraries (large downloads)",
+      "license": "Sonniss GDC bundle license (royalty-free for media)",
+      "commercial": true,
+      "attribution": "not required",
+      "url": "https://sonniss.com/gameaudiogdc/",
+      "tags": ["pro", "foley", "weapons", "footsteps", "ambience", "pack"],
+      "why": "Best free high-quality realistic library for games. Big zips; read license (no resale as sounds, no AI training)."
+    },
+    {
+      "id": "freesound",
+      "name": "Freesound",
+      "style": "community field recordings — most natural/varied",
+      "license": "per sound (prefer CC0 / CC BY; avoid CC BY-NC for commercial)",
+      "commercial": "depends",
+      "attribution": "depends",
+      "url": "https://freesound.org/",
+      "tags": ["nature", "doors", "field-recording", "search"],
+      "why": "When you need a specific real recording. Always filter license. API key unlocks search-in-shell later."
+    },
+    {
+      "id": "opengameart-sfx",
+      "name": "OpenGameArt — Sound Effects",
+      "style": "mixed community game audio",
+      "license": "per file (CC0 / CC BY / …)",
+      "commercial": "depends",
+      "attribution": "depends",
+      "url": "https://opengameart.org/art-search-advanced?keys=&field_art_type_tid%5B%5D=13",
+      "tags": ["game", "browse"],
+      "why": "Game-oriented browsing; check each file license."
+    }
+  ]
+}

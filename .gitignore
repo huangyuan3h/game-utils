@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+*.egg-info/
+
+# Shell vendors / deps
+shell/vendors/
+shell/sfx_node/node_modules/
+shell/.venv/
+
+# Generated assets
+output/
+
+# User-downloaded packs waiting to import
+library/sfx/incoming/*
+!library/sfx/incoming/.gitkeep
+
+# Godot
+prototypes/**/.godot/
+prototypes/**/*.import
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
