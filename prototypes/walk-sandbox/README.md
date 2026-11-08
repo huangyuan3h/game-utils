@@ -1,26 +1,32 @@
 # Walk Sandbox
 
-Minimal Godot 4.6 prototype:
+Minimal Godot 4.6 prototype for natural on-foot movement.
 
-- One character (GLB from `civ-iso-godot`: `walker.glb`)
-- 8-direction move (WASD / arrows, including diagonals)
+## What you get
+
+- **Quaternius AnimatedHuman** (CC0) with **Idle / Walk / Run** clips
+- Hold **Shift** to run (faster + Run clip + quicker footfalls)
+- Soft footstep “da-da” WAVs under `assets/sfx/` (placeholder Foley; swap later)
+- Smooth acceleration + yaw turn
+- 8-direction move (WASD / arrows)
 - Four colored spots to walk onto
+- Fallback: static `walker.glb` + light bob if FBX import fails
 
 ## Run
-
-From repo root:
 
 ```bash
 ./start-walk.sh
 ```
 
-Or open `prototypes/walk-sandbox` in Godot 4.6+.
+Or open this folder in Godot 4.6+ and press **F5**.
+
+## Assets
+
+| File | Source | License |
+|------|--------|---------|
+| `assets/models/quaternius/AnimatedHuman.fbx` | Quaternius via civ-iso-godot | CC0 |
+| `assets/models/walker.glb` / `settler.glb` | Blender scripts in civ-iso-godot | project art |
 
 ## Goal
 
-See a person you can control, and walk them to different places on the ground.
-
-## Note on UI polish
-
-Editor / default HUD will look plain. That is expected. See `docs/godot-ui-note.md`.
-Gameplay first; HTML-level menu polish can come later.
+Control one person and walk naturally across the ground to different spots.

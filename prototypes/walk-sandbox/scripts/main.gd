@@ -5,6 +5,7 @@ extends Node3D
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
 @onready var _hud: Label = $CanvasLayer/HUD
 @onready var _markers_root: Node3D = $Markers
+@onready var _ground_mesh: MeshInstance3D = $Ground/Mesh
 
 const MARKER_COLORS := [
 	Color(0.9, 0.25, 0.25),
@@ -24,16 +25,34 @@ const REACH_DIST := 1.35
 
 
 func _ready() -> void:
+	_style_ground()
 	_spawn_markers()
 	_update_hud()
 
 
-func _process(_delta: float) -> void:
-	# Soft follow
-	var target := _player.global_position + Vector3(0, 10, 12)
-	$CameraPivot.global_position = $CameraPivot.global_position.lerp(target, 0.08)
-	_camera.look_at(_player.global_position + Vector3(0, 0.8, 0), Vector3.UP)
+func _process(delta: float) -> void:
+	# Soft follow, framed for ~1.65m character
+	var target := _player.global_position + Vector3(0, 7.5, 9.5)
+	$CameraPivot.global_position = $CameraPivot.global_position.lerp(target, 1.0 - exp(-6.0 * delta))
+	_camera.look_at(_player.global_position + Vector3(0, 0.9, 0), Vector3.UP)
 	_update_hud()
+
+
+func _style_ground() -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.40, 0.55, 0.36)
+	mat.roughness = 0.95
+	# Soft grid so walking distance reads clearly
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.40, 0.55, 0.36))
+	for x in 64:
+		for y in 64:
+			if x == 0 or y == 0 or x == 32 or y == 32:
+				img.set_pixel(x, y, Color(0.34, 0.48, 0.30))
+	var tex := ImageTexture.create_from_image(img)
+	mat.albedo_texture = tex
+	mat.uv1_scale = Vector3(14, 14, 14)
+	_ground_mesh.material_override = mat
 
 
 func _spawn_markers() -> void:
@@ -42,19 +61,19 @@ func _spawn_markers() -> void:
 		var cyl := CylinderMesh.new()
 		cyl.top_radius = 0.45
 		cyl.bottom_radius = 0.45
-		cyl.height = 0.15
+		cyl.height = 0.12
 		marker.mesh = cyl
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = MARKER_COLORS[i]
 		mat.emission_enabled = true
 		mat.emission = MARKER_COLORS[i] * 0.35
 		marker.material_override = mat
-		marker.position = MARKER_POS[i] + Vector3(0, 0.08, 0)
+		marker.position = MARKER_POS[i] + Vector3(0, 0.07, 0)
 		marker.name = "Marker_%d" % (i + 1)
 
 		var label := Label3D.new()
 		label.text = "Spot %d" % (i + 1)
-		label.position = Vector3(0, 0.7, 0)
+		label.position = Vector3(0, 0.85, 0)
 		label.font_size = 48
 		label.modulate = Color(1, 1, 1)
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -70,4 +89,9 @@ func _update_hud() -> void:
 		if d <= REACH_DIST:
 			reached.append("Spot %d" % (i + 1))
 	var status := "Standing on: " + (", ".join(reached) if reached else "—")
-	_hud.text = "Walk Sandbox\nWASD / Arrow keys · 8 directions\nWalk onto the colored spots\n%s" % status
+	_hud.text = (
+		"Walk Sandbox · walk / run\n"
+		+ "WASD / Arrows · hold Shift to run\n"
+		+ "Footstep taps follow cadence\n"
+		+ status
+	)
