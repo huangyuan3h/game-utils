@@ -19,12 +19,16 @@ extends Resource
 @export var fallback_run: Array[AudioStream] = []
 
 
-func load_default_fallbacks() -> void:
+func load_default_fallbacks(
+	walk_pattern: String = "res://assets/sfx/foot_walk_%d.wav",
+	run_pattern: String = "res://assets/sfx/foot_run_%d.wav",
+	count: int = 4
+) -> void:
 	fallback_walk.clear()
 	fallback_run.clear()
-	for i in 4:
-		var wpath := "res://assets/sfx/foot_walk_%d.wav" % i
-		var rpath := "res://assets/sfx/foot_run_%d.wav" % i
+	for i in count:
+		var wpath := walk_pattern % i
+		var rpath := run_pattern % i
 		if ResourceLoader.exists(wpath):
 			var ws := load(wpath) as AudioStream
 			if ws != null:

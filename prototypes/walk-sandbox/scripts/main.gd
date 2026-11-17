@@ -217,9 +217,15 @@ func _get_lit_beacon_ids() -> Array[String]:
 	return ids
 
 
-func _on_beacon_lit_changed(_beacon: WorldBeacon, _lit: bool) -> void:
+func _on_beacon_lit_changed(beacon: WorldBeacon, lit: bool) -> void:
 	_refresh_interaction_prompt()
 	_refresh_overlay()
+	var flow := get_node_or_null("/root/GameFlow")
+	var ui := get_node_or_null("/root/UIRouter")
+	if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
+		var msg := "Beacon %d Activated" % beacon.beacon_index if lit else "Beacon %d Extinguished" % beacon.beacon_index
+		var tone := &"success" if lit else &"info"
+		ui.call("show_toast", msg, 2.2, tone)
 
 
 func _on_interactor_focus_changed(target: Interactable) -> void:

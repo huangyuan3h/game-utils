@@ -7,8 +7,15 @@ from pathlib import Path
 
 from game_utils_audio import __version__
 from game_utils_audio.bgm import acestep
+from game_utils_audio.godot_project import init_godot_project, sync_addons
 from game_utils_audio.menu import run_menu
-from game_utils_audio.paths import BGM_OUTPUT_DIR, DEFAULT_GODOT_AUDIO_DIR, SFX_OUTPUT_DIR, ensure_output_dirs
+from game_utils_audio.paths import (
+    BGM_OUTPUT_DIR,
+    DEFAULT_GODOT_AUDIO_DIR,
+    DEFAULT_GODOT_PROJECT_DIR,
+    SFX_OUTPUT_DIR,
+    ensure_output_dirs,
+)
 from game_utils_audio.sfx import builtin, jsfxr, library as sfx_library, rfxgen
 from game_utils_audio.sync import sync_audio_assets
 
@@ -158,6 +165,47 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_addons_sync(args: argparse.Namespace) -> int:
+    target = Path(args.target) if args.target else DEFAULT_GODOT_PROJECT_DIR
+    res = sync_addons(
+        target_project=target,
+        addons=args.addon or None,
+        dry_run=args.dry_run,
+        prune=args.prune,
+    )
+    mode = "DRY-RUN" if res.dry_run else "ADDONS-SYNC"
+    print(f"[{mode}] target={res.target_project} addons={','.join(res.addons)}")
+    print(
+        f"  copied={len(res.copied)} updated={len(res.updated)} "
+        f"unchanged={len(res.unchanged)} pruned={len(res.pruned)}"
+    )
+    for rel in res.copied:
+        print(f"  + {rel}")
+    for rel in res.updated:
+        print(f"  ~ {rel}")
+    for rel in res.pruned:
+        print(f"  - {rel}")
+    return 0
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    res = init_godot_project(
+        Path(args.target),
+        name=args.name,
+        force=args.force,
+        dry_run=args.dry_run,
+    )
+    mode = "DRY-RUN" if res.dry_run else "INIT"
+    addon_files = (
+        len(res.addon_sync.copied) + len(res.addon_sync.updated)
+        if res.addon_sync is not None
+        else 0
+    )
+    print(f"[{mode}] project='{res.project_name}' dir={res.target_dir}")
+    print(f"  template_files={len(res.created_files)} addon_files={addon_files}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="game-utils audio shell — realistic SFX collections, BGM (ACE-Step), and Godot asset sync",
@@ -248,6 +296,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--dry-run", action="store_true", help="Preview sync without copying or writing files")
     p_sync.add_argument("--force", action="store_true", help="Overwrite existing destination files")
     p_sync.set_defaults(func=_cmd_sync)
+
+    # --- Addons ---
+    p_addons = sub.add_parser("addons", help="Manage shared Godot addons (gu_core, gu_gameplay)")
+    addons_sub = p_addons.add_subparsers(dest="addons_command", required=True)
+
+    p_addons_sync = addons_sub.add_parser("sync", help="Sync godot/addons/ into a Godot project")
+    p_addons_sync.add_argument(
+        "--target",
+        default=None,
+        help=f"Target Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})",
+    )
+    p_addons_sync.add_argument("--addon", action="append", help="Specific addon to sync (repeatable)")
+    p_addons_sync.add_argument("--dry-run", action="store_true", help="Preview addon changes without writing")
+    p_addons_sync.add_argument("--prune", action="store_true", help="Remove stale files inside synced addons")
+    p_addons_sync.set_defaults(func=_cmd_addons_sync)
+
+    # --- Init ---
+    p_init = sub.add_parser("init", help="Scaffold a new Godot 4.6 game project from shared skeleton")
+    p_init.add_argument("target", help="Target directory for the new Godot project")
+    p_init.add_argument("--name", default=None, help="Application name in project.godot")
+    p_init.add_argument("--force", action="store_true", help="Overwrite existing project.godot/template files")
+    p_init.add_argument("--dry-run", action="store_true", help="Preview scaffolded files without writing")
+    p_init.set_defaults(func=_cmd_init)
 
     return parser
 

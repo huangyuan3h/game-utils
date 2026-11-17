@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="48" viewBox="0 0 160 48">
+  <defs>
+    <linearGradient id="btnPressGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0A1B38" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#133361" stop-opacity="0.98"/>
+    </linearGradient>
+  </defs>
+  <polygon points="12,3 148,3 157,24 148,45 12,45 3,24"
+           fill="url(#btnPressGrad)" stroke="#38E8FF" stroke-width="2.2"/>
+  <polygon points="14,7 146,7 153,24 146,41 14,41 7,24"
+           fill="none" stroke="#F2CF66" stroke-opacity="0.85" stroke-width="1.2"/>
+  <polygon points="11,20 16,24 11,28 6,24" fill="#F2CF66"/>
+  <polygon points="149,20 154,24 149,28 144,24" fill="#F2CF66"/>
+</svg>

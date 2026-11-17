@@ -20,6 +20,8 @@ library/sfx/incoming/*
 !library/sfx/incoming/.gitkeep
 
 # Godot
+godot/**/.godot/
+godot/**/*.import
 prototypes/**/.godot/
 prototypes/**/*.import
 

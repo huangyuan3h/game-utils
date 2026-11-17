@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="48" viewBox="0 0 160 48">
+  <defs>
+    <linearGradient id="btnHoverGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A3E78" stop-opacity="0.98"/>
+      <stop offset="50%" stop-color="#112A54" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#0B1E40" stop-opacity="0.98"/>
+    </linearGradient>
+  </defs>
+  <polygon points="12,3 148,3 157,24 148,45 12,45 3,24"
+           fill="url(#btnHoverGrad)" stroke="#F2CF66" stroke-width="2.2"/>
+  <polygon points="14,7 146,7 153,24 146,41 14,41 7,24"
+           fill="none" stroke="#38E8FF" stroke-opacity="0.9" stroke-width="1.3"/>
+  <!-- Bright psionic side crystals -->
+  <polygon points="11,20 16,24 11,28 6,24" fill="#6AF2FF"/>
+  <polygon points="149,20 154,24 149,28 144,24" fill="#6AF2FF"/>
+  <line x1="22" y1="7" x2="138" y2="7" stroke="#6AF2FF" stroke-opacity="0.6" stroke-width="1"/>
+</svg>

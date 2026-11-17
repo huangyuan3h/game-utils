@@ -1,0 +1,37 @@
+; Engine configuration file.
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="{{PROJECT_NAME}}"
+config/description="Godot 4.6 game project scaffolded from game-utils shared skeleton."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
+
+[audio]
+
+buses/default_bus_layout="res://addons/gu_core/audio/default_bus_layout.tres"
+
+[autoload]
+
+SettingsStore="*res://addons/gu_core/settings/settings_store.gd"
+InputRouter="*res://addons/gu_core/input/input_router.gd"
+AudioManager="*res://addons/gu_core/audio/audio_manager.gd"
+SaveService="*res://addons/gu_core/save/save_service.gd"
+UIRouter="*res://addons/gu_core/ui/ui_router.gd"
+GameFlow="*res://addons/gu_core/flow/game_flow.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gu_core/plugin.cfg", "res://addons/gu_gameplay/plugin.cfg")

@@ -1,5 +1,5 @@
 extends Node
-## Multi-bus audio manager handling bus volume mapping, BGM crossfades, and pooled UI/SFX playback.
+## Multi-bus audio manager handling bus volume mapping, BGM crossfades, and pooled UI / 3D SFX playback.
 
 const BUS_MASTER := &"Master"
 const BUS_BGM := &"BGM"
@@ -17,6 +17,7 @@ const SETTING_TO_BUS := {
 }
 
 const UI_POOL_SIZE := 4
+const SFX3D_POOL_SIZE := 8
 const MUTE_THRESHOLD := 0.001
 
 var _linear_volumes: Dictionary = {
@@ -32,6 +33,8 @@ var _active_bgm_idx: int = 0
 var _bgm_tween: Tween = null
 var _ui_players: Array[AudioStreamPlayer] = []
 var _ui_cursor: int = 0
+var _sfx3d_players: Array[AudioStreamPlayer3D] = []
+var _sfx3d_cursor: int = 0
 var _rng := RandomNumberGenerator.new()
 var _shutting_down: bool = false
 
@@ -69,6 +72,10 @@ func get_bus_volume(bus_name: StringName) -> float:
 	return float(_linear_volumes.get(bus_name, 1.0))
 
 
+func get_sfx3d_pool_size() -> int:
+	return _sfx3d_players.size()
+
+
 func is_shutting_down() -> bool:
 	return _shutting_down
 
@@ -82,6 +89,10 @@ func prepare_shutdown() -> void:
 			p.stop()
 			p.stream = null
 	for p in _ui_players:
+		if is_instance_valid(p):
+			p.stop()
+			p.stream = null
+	for p in _sfx3d_players:
 		if is_instance_valid(p):
 			p.stop()
 			p.stream = null
@@ -189,25 +200,83 @@ func play_sfx_3d(
 	player.bus = BUS_SFX
 	player.stream = stream
 	player.volume_db = volume_db
-	player.pitch_scale = _rng.randf_range(pitch_min, pitch_max)
+	player.pitch_scale = _rng.randf_range(minf(pitch_min, pitch_max), maxf(pitch_min, pitch_max))
 	player.play()
 
 
-func _setup_players() -> void:
-	for i in 2:
-		var bgm := AudioStreamPlayer.new()
-		bgm.name = "BGM_%d" % i
-		bgm.bus = BUS_BGM
-		bgm.volume_db = -80.0
-		add_child(bgm)
-		_bgm_players.append(bgm)
+func play_sfx_at(
+	world_pos: Vector3,
+	stream: AudioStream,
+	volume_db: float = 0.0,
+	pitch_min: float = 0.94,
+	pitch_max: float = 1.06,
+	max_distance: float = 30.0
+) -> AudioStreamPlayer3D:
+	if _shutting_down or stream == null:
+		return null
+	_ensure_sfx3d_pool()
+	if _sfx3d_players.is_empty():
+		return null
 
-	for i in UI_POOL_SIZE:
-		var ui := AudioStreamPlayer.new()
-		ui.name = "UI_%d" % i
-		ui.bus = BUS_UI
-		add_child(ui)
-		_ui_players.append(ui)
+	var chosen: AudioStreamPlayer3D = null
+	for offset in _sfx3d_players.size():
+		var idx := (_sfx3d_cursor + offset) % _sfx3d_players.size()
+		var cand := _sfx3d_players[idx]
+		if is_instance_valid(cand) and not cand.playing:
+			chosen = cand
+			_sfx3d_cursor = (idx + 1) % _sfx3d_players.size()
+			break
+
+	if chosen == null:
+		chosen = _sfx3d_players[_sfx3d_cursor]
+		_sfx3d_cursor = (_sfx3d_cursor + 1) % _sfx3d_players.size()
+
+	if chosen.is_inside_tree():
+		chosen.global_position = world_pos
+	else:
+		chosen.position = world_pos
+	chosen.bus = BUS_SFX
+	chosen.max_distance = maxf(max_distance, 0.5)
+	chosen.stream = stream
+	chosen.volume_db = volume_db
+	chosen.pitch_scale = _rng.randf_range(minf(pitch_min, pitch_max), maxf(pitch_min, pitch_max))
+	if chosen.is_inside_tree() and AudioServer.get_driver_name() != "Dummy":
+		chosen.play()
+	return chosen
+
+
+func _setup_players() -> void:
+	if _bgm_players.is_empty():
+		for i in 2:
+			var bgm := AudioStreamPlayer.new()
+			bgm.name = "BGM_%d" % i
+			bgm.bus = BUS_BGM
+			bgm.volume_db = -80.0
+			add_child(bgm)
+			_bgm_players.append(bgm)
+
+	if _ui_players.is_empty():
+		for i in UI_POOL_SIZE:
+			var ui := AudioStreamPlayer.new()
+			ui.name = "UI_%d" % i
+			ui.bus = BUS_UI
+			add_child(ui)
+			_ui_players.append(ui)
+
+	_ensure_sfx3d_pool()
+
+
+func _ensure_sfx3d_pool() -> void:
+	if not _sfx3d_players.is_empty():
+		return
+	for i in SFX3D_POOL_SIZE:
+		var sfx := AudioStreamPlayer3D.new()
+		sfx.name = "SFX3D_%d" % i
+		sfx.bus = BUS_SFX
+		sfx.max_distance = 30.0
+		sfx.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		add_child(sfx)
+		_sfx3d_players.append(sfx)
 
 
 func _sync_from_settings_store() -> void:

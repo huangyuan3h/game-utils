@@ -49,5 +49,18 @@ func _on_settings() -> void:
 
 func _on_title() -> void:
 	var flow := get_node_or_null("/root/GameFlow")
-	if flow != null:
+	if flow == null:
+		return
+	var ui := get_node_or_null("/root/UIRouter")
+	if ui != null and ui.has_method("show_confirm"):
+		ui.call(
+			"show_confirm",
+			"RETURN TO NEXUS",
+			"Unsaved exploration progress will be lost. Return to title screen?",
+			func() -> void:
+				if is_instance_valid(flow):
+					flow.call("return_to_title"),
+			{"confirm_text": "RETURN", "cancel_text": "STAY"}
+		)
+	else:
 		flow.call("return_to_title")

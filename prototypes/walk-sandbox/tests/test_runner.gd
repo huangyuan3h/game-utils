@@ -422,6 +422,13 @@ func _test_audio_manager() -> void:
 	_assert(not am.is_shutting_down(), "AudioManager is not shutting down initially")
 
 	get_root().add_child(am)
+	var sfx_stream := AudioStreamWAV.new()
+	var p3d := am.play_sfx_at(Vector3(4.0, 1.5, -2.0), sfx_stream, -6.0)
+	_assert(am.get_sfx3d_pool_size() == AudioManagerScript.SFX3D_POOL_SIZE, "AudioManager creates 3D SFX pool")
+	_assert(p3d != null and p3d.stream == sfx_stream, "AudioManager.play_sfx_at assigns stream")
+	_assert(p3d.global_position.is_equal_approx(Vector3(4.0, 1.5, -2.0)), "AudioManager.play_sfx_at sets 3D position")
+	_assert(p3d.bus == AudioManagerScript.BUS_SFX, "AudioManager.play_sfx_at routes through SFX bus")
+
 	var dummy_player := AudioStreamPlayer.new()
 	dummy_player.stream = AudioStreamWAV.new()
 	get_root().add_child(dummy_player)
@@ -532,6 +539,31 @@ func _test_game_flow_and_ui_router() -> void:
 	flow.call("return_to_title")
 	_assert(int(flow.call("get_state")) == GameFlowScript.State.TITLE, "return_to_title transitions back to TITLE")
 	ui.call("clear_screens")
+
+	# Toast queue + modal confirm + transition curtain checks
+	ui.call("clear_toasts")
+	ui.call("show_toast", "Toast 1", 1.0, &"info")
+	ui.call("show_toast", "Toast 2", 1.0, &"success")
+	ui.call("show_toast", "Toast 3", 1.0, &"warning")
+	ui.call("show_toast", "Toast 4", 1.0, &"error")
+	_assert(int(ui.call("get_active_toast_count")) == 3, "UIRouter caps active toasts at MAX_ACTIVE_TOASTS")
+	_assert(int(ui.call("get_queued_toast_count")) == 1, "UIRouter queues excess toasts")
+	ui.call("clear_toasts")
+
+	var confirm_hits := [0]
+	var dlg := ui.call("show_confirm", "Confirm", "Test body", func() -> void: confirm_hits[0] += 1) as Control
+	_assert(dlg != null, "UIRouter.show_confirm returns dialog node")
+	_assert(ui.call("top_screen_id") == UIRouterScript.CONFIRM_SCREEN_ID, "show_confirm pushes modal onto UIRouter")
+	_assert(not bool(input_router.call("allow_debug")), "show_confirm activates InputRouter.Context.MODAL")
+	dlg.call("confirm")
+	_assert(confirm_hits[0] == 1, "ConfirmDialog.confirm invokes callback")
+	_assert(bool(input_router.call("allow_debug")), "ConfirmDialog.confirm restores InputRouter context")
+
+	ui.call("fade_out", 0.0)
+	_assert(is_equal_approx(float(ui.call("get_transition_alpha")), 1.0), "UIRouter.fade_out reaches opaque")
+	ui.call("fade_in", 0.0)
+	_assert(is_equal_approx(float(ui.call("get_transition_alpha")), 0.0), "UIRouter.fade_in returns transparent")
+
 	mock_world.queue_free()
 
 
@@ -713,6 +745,10 @@ func _test_surface_resolver_and_audio_bank() -> void:
 	_assert(
 		SurfaceResolverScript.resolve(MapTypes.Biome.SAND, 0.15, 0.0) == SurfaceResolverScript.SurfaceType.SHALLOW_WATER,
 		"Shallow water_depth overrides Sand to SHALLOW_WATER surface"
+	)
+	_assert(
+		SurfaceResolverScript.resolve_by_name("Alpine", 0.0, 0.0) == SurfaceResolverScript.SurfaceType.SNOW,
+		"SurfaceResolver.resolve_by_name maps Alpine to SNOW without MapTypes dependency"
 	)
 
 	var bank := SurfaceAudioBankScript.new()
