@@ -14,12 +14,14 @@ var default_save_slot: String = "autosave"
 
 var _world: Node = null
 var _quitting: bool = false
+var _scene_loader: SceneLoader = null
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if get_tree() != null:
 		get_tree().auto_accept_quit = false
+	_ensure_scene_loader()
 	_ensure_cancel_action()
 
 
@@ -77,8 +79,10 @@ func load_game(slot: String = "") -> bool:
 	var ui := _ui_router()
 	if ui != null:
 		ui.call("clear_screens")
+	var data: Dictionary = res.get("data", {}) as Dictionary
 	if _world != null and _world.has_method("apply_save_state"):
-		_world.call("apply_save_state", res.get("data", {}))
+		_world.call("apply_save_state", data)
+	save_svc.call("apply_saveables", data)
 	_set_state(State.PLAYING)
 	return true
 
@@ -86,9 +90,13 @@ func load_game(slot: String = "") -> bool:
 func save_current_game(slot: String = "") -> Error:
 	var target_slot := slot if slot != "" else default_save_slot
 	var save_svc := _save_service()
-	if save_svc == null or _world == null or not _world.has_method("export_save_state"):
+	if save_svc == null:
 		return ERR_UNAVAILABLE
-	var payload: Dictionary = _world.call("export_save_state") as Dictionary
+	var payload: Dictionary = {}
+	if _world != null and _world.has_method("export_save_state"):
+		payload = _world.call("export_save_state") as Dictionary
+	elif _world == null:
+		return ERR_UNAVAILABLE
 	return int(save_svc.call("save_slot", target_slot, payload)) as Error
 
 
@@ -136,6 +144,46 @@ func close_top_ui() -> void:
 
 func return_to_title() -> void:
 	enter_title()
+
+
+func get_scene_loader() -> SceneLoader:
+	_ensure_scene_loader()
+	return _scene_loader
+
+
+func load_scene_async(scene_path: String, transition_s: float = 0.25) -> bool:
+	if scene_path == "" or not ResourceLoader.exists(scene_path):
+		return false
+	_ensure_scene_loader()
+	_set_tree_paused(false)
+	_set_state(State.LOADING)
+
+	var ui := _ui_router()
+	if ui != null:
+		ui.call("clear_screens")
+		if transition_s > 0.0 and ui.has_method("fade_out"):
+			await ui.call("fade_out", transition_s)
+
+	var packed := await _scene_loader.load_packed_async(scene_path)
+	if packed == null:
+		if ui != null and transition_s > 0.0 and ui.has_method("fade_in"):
+			await ui.call("fade_in", transition_s)
+		return false
+
+	var tree := get_tree()
+	if tree != null:
+		tree.change_scene_to_packed(packed)
+	if ui != null and transition_s > 0.0 and ui.has_method("fade_in"):
+		await ui.call("fade_in", transition_s)
+	return true
+
+
+func _ensure_scene_loader() -> void:
+	if _scene_loader != null and is_instance_valid(_scene_loader):
+		return
+	_scene_loader = SceneLoader.new()
+	_scene_loader.name = "SceneLoader"
+	add_child(_scene_loader)
 
 
 func quit_game() -> void:

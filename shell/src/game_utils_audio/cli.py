@@ -6,7 +6,9 @@ import sys
 from pathlib import Path
 
 from game_utils_audio import __version__
+from game_utils_audio.assets_audit import audit_project_assets, write_credits
 from game_utils_audio.bgm import acestep
+from game_utils_audio.data_pipeline import build_data_dir, validate_data_dir
 from game_utils_audio.godot_project import init_godot_project, sync_addons
 from game_utils_audio.menu import run_menu
 from game_utils_audio.paths import (
@@ -16,6 +18,7 @@ from game_utils_audio.paths import (
     SFX_OUTPUT_DIR,
     ensure_output_dirs,
 )
+from game_utils_audio.quality import export_godot_project, run_project_check
 from game_utils_audio.sfx import builtin, jsfxr, library as sfx_library, rfxgen
 from game_utils_audio.sync import sync_audio_assets
 
@@ -206,6 +209,85 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_assets_audit(args: argparse.Namespace) -> int:
+    target = Path(args.target) if args.target else DEFAULT_GODOT_PROJECT_DIR
+    res = audit_project_assets(target, write=args.write)
+    print(f"[AUDIT] project={res.project_dir}")
+    print(
+        f"  total={len(res.entries)} audio={res.counts_by_category.get('audio', 0)} "
+        f"models={res.counts_by_category.get('model', 0)} textures={res.counts_by_category.get('texture', 0)}"
+    )
+    print(f"  unknown_licenses={len(res.unknown_licenses)} non_commercial={len(res.non_commercial)}")
+    for path in res.unknown_licenses:
+        print(f"  ? unknown license: {path}")
+    for path in res.non_commercial:
+        print(f"  ! non-commercial: {path}")
+    if args.write:
+        print(f"  wrote {res.attribution_path}")
+    if args.strict and not res.ok:
+        return 1
+    return 0
+
+
+def _cmd_assets_credits(args: argparse.Namespace) -> int:
+    target = Path(args.target) if args.target else DEFAULT_GODOT_PROJECT_DIR
+    out = Path(args.out) if args.out else None
+    credits_path, res = write_credits(target, out)
+    print(f"Wrote {credits_path} ({len(res.entries)} asset(s))")
+    return 0
+
+
+def _cmd_data_validate(args: argparse.Namespace) -> int:
+    res = validate_data_dir(Path(args.src))
+    print(f"[DATA-VALIDATE] dir={res.src_dir} files={len(res.checked_files)}")
+    if not res.ok:
+        for err in res.errors:
+            print(f"  ERROR: {err}", file=sys.stderr)
+        return 1
+    print(f"  OK ({len(res.tables)} table(s), {len(res.localization_files)} localization file(s))")
+    return 0
+
+
+def _cmd_data_build(args: argparse.Namespace) -> int:
+    res = build_data_dir(Path(args.src), Path(args.out), dry_run=args.dry_run)
+    mode = "DRY-RUN" if res.dry_run else "DATA-BUILD"
+    print(f"[{mode}] src={res.src_dir} out={res.out_dir} files={len(res.written_files)}")
+    for rel in res.written_files:
+        print(f"  + {rel}")
+    return 0
+
+
+def _cmd_check(args: argparse.Namespace) -> int:
+    target = Path(args.project) if args.project else DEFAULT_GODOT_PROJECT_DIR
+    report = run_project_check(
+        target,
+        godot_bin=args.godot,
+        skip_pytest=args.skip_pytest,
+        skip_godot=args.skip_godot,
+        frames=args.frames,
+    )
+    print(f"[CHECK] project={report.project_dir}")
+    for step in report.steps:
+        mark = "PASS" if step.ok else "FAIL"
+        print(f"  [{mark}] {step.name}: {step.detail}")
+    return 0 if report.ok else 1
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    target = Path(args.project) if args.project else DEFAULT_GODOT_PROJECT_DIR
+    cmd = export_godot_project(
+        target,
+        preset=args.preset,
+        out_path=Path(args.out),
+        godot_bin=args.godot,
+        debug=args.debug,
+        dry_run=args.dry_run,
+    )
+    mode = "DRY-RUN" if args.dry_run else "EXPORT"
+    print(f"[{mode}] {' '.join(cmd)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="game-utils audio shell — realistic SFX collections, BGM (ACE-Step), and Godot asset sync",
@@ -319,6 +401,53 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--force", action="store_true", help="Overwrite existing project.godot/template files")
     p_init.add_argument("--dry-run", action="store_true", help="Preview scaffolded files without writing")
     p_init.set_defaults(func=_cmd_init)
+
+    # --- Assets Audit & Credits ---
+    p_assets = sub.add_parser("assets", help="Audit project assets and generate CREDITS.md")
+    assets_sub = p_assets.add_subparsers(dest="assets_command", required=True)
+
+    p_assets_audit = assets_sub.add_parser("audit", help="Scan project assets/ for license and commercial status")
+    p_assets_audit.add_argument("--target", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
+    p_assets_audit.add_argument("--write", action="store_true", help="Write ASSETS_ATTRIBUTION.json")
+    p_assets_audit.add_argument("--strict", action="store_true", help="Exit 1 if unknown or non-commercial assets exist")
+    p_assets_audit.set_defaults(func=_cmd_assets_audit)
+
+    p_assets_credits = assets_sub.add_parser("credits", help="Generate CREDITS.md from project assets")
+    p_assets_credits.add_argument("--target", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
+    p_assets_credits.add_argument("--out", default=None, help="Output markdown path (default: <target>/CREDITS.md)")
+    p_assets_credits.set_defaults(func=_cmd_assets_credits)
+
+    # --- Data Tables & Localization ---
+    p_data = sub.add_parser("data", help="Validate and build CSV/JSON game data tables")
+    data_sub = p_data.add_subparsers(dest="data_command", required=True)
+
+    p_data_val = data_sub.add_parser("validate", help="Validate CSV/JSON tables and localization CSVs")
+    p_data_val.add_argument("src", help="Source data directory")
+    p_data_val.set_defaults(func=_cmd_data_validate)
+
+    p_data_build = data_sub.add_parser("build", help="Validate and compile data tables into Godot JSON")
+    p_data_build.add_argument("src", help="Source data directory")
+    p_data_build.add_argument("--out", required=True, help="Output Godot data directory")
+    p_data_build.add_argument("--dry-run", action="store_true", help="Preview output files without writing")
+    p_data_build.set_defaults(func=_cmd_data_build)
+
+    # --- Quality Gate & Export ---
+    p_check = sub.add_parser("check", help="Run addons parity, pytest, and Godot headless checks")
+    p_check.add_argument("--project", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
+    p_check.add_argument("--godot", default=None, help="Path to Godot binary")
+    p_check.add_argument("--skip-pytest", action="store_true", help="Skip pytest step")
+    p_check.add_argument("--skip-godot", action="store_true", help="Skip Godot headless checks")
+    p_check.add_argument("--frames", type=int, default=30, help="Frames for smoke run (default: 30)")
+    p_check.set_defaults(func=_cmd_check)
+
+    p_export = sub.add_parser("export", help="Headless Godot export using export_presets.cfg")
+    p_export.add_argument("--project", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
+    p_export.add_argument("--preset", required=True, help="Export preset name from export_presets.cfg")
+    p_export.add_argument("--out", required=True, help="Output artifact path")
+    p_export.add_argument("--godot", default=None, help="Path to Godot binary")
+    p_export.add_argument("--debug", action="store_true", help="Use --export-debug instead of --export-release")
+    p_export.add_argument("--dry-run", action="store_true", help="Validate preset and print command without running")
+    p_export.set_defaults(func=_cmd_export)
 
     return parser
 

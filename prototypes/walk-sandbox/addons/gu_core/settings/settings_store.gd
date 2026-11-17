@@ -16,6 +16,7 @@ const DEFAULTS := {
 	"camera_zoom_sensitivity": 1.0,
 	"fullscreen": false,
 	"show_debug_hud": true,
+	"input_bindings": {},
 }
 
 var config_path: String = DEFAULT_PATH
@@ -88,6 +89,8 @@ func _sanitize(key: String, value: Variant) -> Variant:
 			return clampf(float(value), 0.25, 3.0)
 		"fullscreen", "show_debug_hud":
 			return bool(value)
+		"input_bindings":
+			return (value as Dictionary).duplicate(true) if value is Dictionary else {}
 		_:
 			return value
 

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-and-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install shell dependencies
+        working-directory: shell
+        run: uv sync --group dev
+      - name: Run pytest
+        working-directory: shell
+        run: uv run pytest
+      - name: Verify shared addons parity
+        working-directory: shell
+        run: uv run gu check --skip-pytest --skip-godot
+      - name: Smoke check asset sync and audit
+        working-directory: shell
+        run: |
+          uv run gu sync --dry-run
+          uv run gu assets audit --target ../prototypes/walk-sandbox
+
+  godot-headless:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: "4.6.2-stable"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Cache Godot headless binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/godot-ci
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+      - name: Download Godot ${{ env.GODOT_VERSION }}
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/godot-ci
+          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/.cache/godot-ci
+          chmod +x ~/.cache/godot-ci/Godot_v${GODOT_VERSION}_linux.x86_64
+      - name: Install shell dependencies
+        working-directory: shell
+        run: uv sync --group dev
+      - name: Run walk-sandbox headless check
+        working-directory: shell
+        run: uv run gu check --skip-pytest --godot "$HOME/.cache/godot-ci/Godot_v${GODOT_VERSION}_linux.x86_64" --frames 30
+      - name: Smoke test gu init starter project
+        working-directory: shell
+        run: |
+          GODOT_BIN="$HOME/.cache/godot-ci/Godot_v${GODOT_VERSION}_linux.x86_64"
+          uv run gu init /tmp/gu_starter_ci --name "CI Starter"
+          "$GODOT_BIN" --headless --path /tmp/gu_starter_ci --import --quit-after 3
+          "$GODOT_BIN" --headless --path /tmp/gu_starter_ci --script res://tests/test_runner.gd
+          "$GODOT_BIN" --headless --path /tmp/gu_starter_ci --quit-after 15

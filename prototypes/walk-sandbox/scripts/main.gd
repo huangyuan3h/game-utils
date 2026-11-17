@@ -63,6 +63,7 @@ func _ready() -> void:
 	if flow != null:
 		flow.call("register_world", self)
 		flow.call("enter_title")
+	_register_dev_commands()
 
 
 func _process(_delta: float) -> void:
@@ -276,9 +277,47 @@ func _regen_terrain() -> void:
 
 func _on_terrain_generation_finished(data: MapData) -> void:
 	if data != null:
-		print("Generated map seed=", data.seed_value, " landform=", data.landform, " h=[", data.h_min, ",", data.h_max, "]")
+		var msg := "Generated map seed=%d landform=%d h=[%.2f,%.2f]" % [data.seed_value, data.landform, data.h_min, data.h_max]
+		print(msg)
+		GuLog.info("Main", msg)
 	_place_player_on_terrain()
 	_spawn_beacons()
+
+
+func _register_dev_commands() -> void:
+	var console := get_node_or_null("/root/DevConsole")
+	if console == null or not console.has_method("register_command"):
+		return
+	console.call("register_command", "tp_spawn", "Teleport player to safe spawn point", func(_args: Array[String]) -> String:
+		_pending_spawn_override.clear()
+		_place_player_on_terrain()
+		return "Teleported to %s" % str(_player.global_position)
+	)
+	console.call("register_command", "light_all", "Light or extinguish all world beacons [on|off]", func(args: Array[String]) -> String:
+		var turn_on := args.is_empty() or args[0].to_lower() != "off"
+		for b in _beacons:
+			if is_instance_valid(b):
+				b.set_lit(turn_on, false)
+		_refresh_overlay()
+		return "Set %d beacon(s) lit=%s" % [_beacons.size(), str(turn_on)]
+	)
+	console.call("register_command", "time", "Set time of day in hours (0..24)", func(args: Array[String]) -> String:
+		if args.is_empty() or _sky_time == null:
+			return "Usage: time <0..24>"
+		var h := fposmod(float(args[0]), 24.0)
+		_sky_time.set("hour", h)
+		return "Time set to %.2f" % h
+	)
+	console.call("register_command", "weather", "Set weather preset (clear|cloudy|overcast|rain|storm|snow)", func(args: Array[String]) -> String:
+		if args.is_empty() or _sky_time == null:
+			return "Usage: weather <clear|cloudy|overcast|rain|storm|snow>"
+		var names := ["clear", "cloudy", "overcast", "rain", "storm", "snow"]
+		var idx := names.find(args[0].to_lower())
+		if idx < 0:
+			return "Unknown weather '%s'" % args[0]
+		_sky_time.call("apply_state", {"weather": idx})
+		return "Weather set to %s" % names[idx]
+	)
 
 
 func _clamp_player_to_map() -> void:

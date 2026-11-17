@@ -29,8 +29,12 @@ func _assert(cond: bool, msg: String) -> void:
 
 
 func _run_all() -> void:
-	for name in ["SettingsStore", "InputRouter", "AudioManager", "SaveService", "UIRouter", "GameFlow", "EventBus"]:
+	for name in ["SettingsStore", "InputRouter", "AudioManager", "SaveService", "UIRouter", "GameFlow", "EventBus", "PoolService", "DevConsole"]:
 		_assert(get_root().get_node_or_null(name) != null, "Autoload %s present" % name)
+
+	var console := get_root().get_node_or_null("DevConsole")
+	if console != null:
+		_assert(str(console.call("execute", "echo hello")) == "hello", "DevConsole executes built-in echo")
 
 	var bus := get_root().get_node_or_null("EventBus")
 	if bus != null:
@@ -74,6 +78,14 @@ func _run_all() -> void:
 
 	var inv := InventoryContainer.new()
 	_assert(inv.add_item(&"coin", 10) == 0 and inv.count_item(&"coin") == 10, "InventoryContainer works in starter")
+
+	var table_path := "user://starter_table.json"
+	var tf := FileAccess.open(table_path, FileAccess.WRITE)
+	tf.store_string('{"rows":[{"id":"potion","val":20}]}')
+	tf.close()
+	var rows := DataTableLoader.load_table(table_path)
+	_assert(rows.size() == 1 and int(DataTableLoader.find_by_id(rows, "potion").get("val", 0)) == 20, "DataTableLoader works in starter")
+	DirAccess.remove_absolute(table_path)
 
 	var main_scene := load("res://scenes/main.tscn") as PackedScene
 	_assert(main_scene != null, "Starter main.tscn loads")

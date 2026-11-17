@@ -15,7 +15,7 @@ from game_utils_audio.paths import (
 
 DEFAULT_ADDONS: tuple[str, ...] = ("gu_core", "gu_gameplay")
 SKIP_FILENAMES = {".DS_Store"}
-SKIP_SUFFIXES = {".import"}
+SKIP_SUFFIXES = {".import", ".uid"}
 
 
 @dataclass

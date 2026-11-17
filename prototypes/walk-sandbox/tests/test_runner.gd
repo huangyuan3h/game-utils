@@ -24,6 +24,8 @@ const SaveServiceScript = preload("res://addons/gu_core/save/save_service.gd")
 const UIRouterScript = preload("res://addons/gu_core/ui/ui_router.gd")
 const GameFlowScript = preload("res://addons/gu_core/flow/game_flow.gd")
 const EventBusScript = preload("res://addons/gu_core/events/event_bus.gd")
+const PoolServiceScript = preload("res://addons/gu_core/pool/pool_service.gd")
+const DevConsoleScript = preload("res://addons/gu_core/debug/dev_console.gd")
 
 const InteractableScript = preload("res://addons/gu_gameplay/interaction/interactable.gd")
 const InteractorScript = preload("res://addons/gu_gameplay/interaction/interactor.gd")
@@ -118,6 +120,10 @@ func _run_all() -> void:
 	_test_event_bus()
 	_test_camera_rig_shake()
 	_test_stat_set_and_inventory()
+	_test_data_table_loader()
+	_test_save_migrations_and_backup()
+	_test_pool_service_and_scene_loader()
+	_test_input_rebinding_and_dev_console()
 
 
 func _test_map_data_and_generator() -> void:
@@ -1074,3 +1080,200 @@ func _test_stat_set_and_inventory() -> void:
 	if DirAccess.dir_exists_absolute(tmp_dir):
 		DirAccess.remove_absolute(tmp_dir)
 	svc.free()
+
+
+func _test_data_table_loader() -> void:
+	var table_path := "user://test_items_p2.json"
+	var f := FileAccess.open(table_path, FileAccess.WRITE)
+	f.store_string(JSON.stringify({
+		"version": 1,
+		"table": "items",
+		"rows": [
+			{"id": "herb", "heal": 15},
+			{"id": "crystal", "heal": 50},
+		],
+	}))
+	f.close()
+
+	var rows := DataTableLoader.load_table(table_path)
+	_assert(rows.size() == 2, "DataTableLoader loads compiled JSON table rows")
+	var by_id := DataTableLoader.index_by_id(rows)
+	_assert(by_id.has("crystal") and int((by_id["crystal"] as Dictionary)["heal"]) == 50, "DataTableLoader.index_by_id indexes rows")
+	var herb := DataTableLoader.find_by_id(rows, "herb")
+	_assert(int(herb.get("heal", 0)) == 15, "DataTableLoader.find_by_id finds row by id")
+
+	if FileAccess.file_exists(table_path):
+		DirAccess.remove_absolute(table_path)
+
+
+class MockPoolItem extends Node3D:
+	var acquired_count: int = 0
+	var released_count: int = 0
+
+	func on_pool_acquire() -> void:
+		acquired_count += 1
+
+	func on_pool_release() -> void:
+		released_count += 1
+
+
+func _test_save_migrations_and_backup() -> void:
+	var tmp_dir := "user://test_saves_arch"
+	var svc := SaveServiceScript.new()
+	svc.save_dir = tmp_dir
+	svc.delete_slot("mig_slot")
+
+	# 1) Saveable registry integration
+	var inv := InventoryContainer.new()
+	inv.add_item(&"ore", 5)
+	svc.register_saveable("inventory", inv)
+	var save_err := svc.save_slot("mig_slot", {"world": {"seed": 55}})
+	_assert(save_err == OK, "SaveService writes slot with registered Saveable")
+
+	# Mutate and verify backup creation on second save
+	inv.add_item(&"ore", 3)
+	var save_err2 := svc.save_slot("mig_slot", {"world": {"seed": 56}})
+	_assert(save_err2 == OK, "SaveService overwrites slot atomically and writes .bak")
+	_assert(FileAccess.file_exists(svc.get_backup_path("mig_slot")), "SaveService creates .bak on overwrite")
+
+	# Corrupt primary JSON -> automatic recovery from .bak (seed 55, ore 5)
+	var cf := FileAccess.open(svc.get_slot_path("mig_slot"), FileAccess.WRITE)
+	cf.store_string("{corrupt_primary")
+	cf.close()
+	var rec := svc.load_slot("mig_slot")
+	_assert(bool(rec.get("ok", false)) and bool(rec.get("recovered_from_backup", false)), "SaveService recovers from .bak when primary JSON is corrupt")
+	var rec_data := rec["data"] as Dictionary
+	_assert(int((rec_data["world"] as Dictionary)["seed"]) == 55, "Backup recovery restores previous valid world seed")
+	var inv_reloaded := InventoryContainer.new()
+	svc.register_saveable("inventory", inv_reloaded)
+	svc.apply_saveables(rec_data)
+	_assert(inv_reloaded.count_item(&"ore") == 5, "SaveService.apply_saveables restores InventoryContainer from backup")
+
+	# 2) Schema migration chain v1 -> v2 -> v3
+	svc.current_schema_version = 3
+	svc.register_migration(1, func(d: Dictionary) -> Dictionary:
+		var next := d.duplicate(true)
+		next["migrated_v2"] = true
+		return next
+	)
+	svc.register_migration(2, func(d: Dictionary) -> Dictionary:
+		var next := d.duplicate(true)
+		next["migrated_v3"] = "done"
+		return next
+	)
+	var mig := svc.load_slot("mig_slot")
+	_assert(bool(mig.get("ok", false)), "SaveService runs v1->v2->v3 migration chain")
+	var mig_data := mig["data"] as Dictionary
+	_assert(int(mig_data.get("schema_version", 0)) == 3, "Migrated save reaches target schema_version 3")
+	_assert(bool(mig_data.get("migrated_v2", false)) and str(mig_data.get("migrated_v3", "")) == "done", "Migrations apply in order")
+
+	svc.delete_slot("mig_slot")
+	if DirAccess.dir_exists_absolute(tmp_dir):
+		DirAccess.remove_absolute(tmp_dir)
+	svc.free()
+
+
+func _test_pool_service_and_scene_loader() -> void:
+	var pool_autoload := get_root().get_node_or_null("PoolService")
+	_assert(pool_autoload != null, "Autoload PoolService exists on SceneTree root")
+
+	var pool := PoolServiceScript.new()
+	get_root().add_child(pool)
+
+	var packed := PackedScene.new()
+	var tpl := MockPoolItem.new()
+	packed.pack(tpl)
+	tpl.free()
+
+	pool.prewarm(packed, 2)
+	var s1 := pool.get_pool_stats(packed)
+	_assert(int(s1["available"]) == 2 and int(s1["active"]) == 0, "PoolService.prewarm populates available pool")
+
+	var parent_node := Node3D.new()
+	get_root().add_child(parent_node)
+	var inst := pool.acquire(packed, parent_node) as MockPoolItem
+	_assert(inst != null and inst.get_parent() == parent_node and inst.visible, "PoolService.acquire activates and parents node")
+	_assert(inst.acquired_count == 1, "PoolService.acquire invokes on_pool_acquire()")
+
+	pool.release(inst)
+	_assert(inst.released_count == 1 and not inst.visible and inst.get_parent() == pool, "PoolService.release parks node and invokes on_pool_release()")
+	var s2 := pool.get_pool_stats(packed)
+	_assert(int(s2["available"]) == 2 and int(s2["active"]) == 0, "PoolService stats restore after release")
+
+	pool.clear_pool(packed)
+	parent_node.queue_free()
+	pool.queue_free()
+
+	var loader := SceneLoader.new()
+	get_root().add_child(loader)
+	_assert(loader.request_load("res://does_not_exist.tscn") == ERR_FILE_NOT_FOUND, "SceneLoader rejects missing scene paths")
+	_assert(loader.request_load("res://scenes/ui/title_screen.tscn") == OK, "SceneLoader starts threaded request on valid scene")
+	for _i in 100:
+		if not loader.is_loading():
+			break
+		OS.delay_msec(10)
+		loader._poll_once()
+	_assert(not loader.is_loading() and is_equal_approx(loader.get_progress(), 1.0), "SceneLoader completes loading title_screen.tscn")
+	loader.queue_free()
+
+
+func _test_input_rebinding_and_dev_console() -> void:
+	var tmp_cfg := "user://test_bindings_arch.cfg"
+	if FileAccess.file_exists(tmp_cfg):
+		DirAccess.remove_absolute(tmp_cfg)
+
+	var store := SettingsStoreScript.new()
+	store.config_path = tmp_cfg
+	store.load_settings()
+
+	var ir := InputRouterScript.new()
+	ir.settings_store = store
+	ir.register_action(&"test_jump", [KEY_SPACE], "Jump")
+	ir.register_action(&"test_dash", [KEY_Q], "Dash")
+
+	_assert(ir.get_action_keycode(&"test_jump") == KEY_SPACE, "InputRouter registers default keycode")
+	var rebind_res := ir.rebind_action_key(&"test_jump", KEY_Q, true)
+	_assert(bool(rebind_res.get("ok", false)) and rebind_res.get("swapped_with") == &"test_dash", "InputRouter swaps conflicting key binding")
+	_assert(ir.get_action_keycode(&"test_jump") == KEY_Q and ir.get_action_keycode(&"test_dash") == KEY_SPACE, "Swapped actions update both keycodes")
+
+	# Reload SettingsStore + InputRouter to verify persistence
+	var store2 := SettingsStoreScript.new()
+	store2.config_path = tmp_cfg
+	store2.load_settings()
+	var ir2 := InputRouterScript.new()
+	ir2.settings_store = store2
+	ir2.register_action(&"test_jump", [KEY_SPACE], "Jump")
+	ir2.register_action(&"test_dash", [KEY_Q], "Dash")
+	_assert(ir2.get_action_keycode(&"test_jump") == KEY_Q, "Persisted input_bindings survive SettingsStore reload")
+
+	ir2.reset_bindings()
+	_assert(ir2.get_action_keycode(&"test_jump") == KEY_SPACE, "InputRouter.reset_bindings restores defaults")
+
+	# GuLog + DevConsole checks
+	GuLog.clear()
+	GuLog.info("Test", "Structured info entry")
+	GuLog.error("Test", "Structured error entry")
+	_assert(GuLog.get_entries(GuLog.Level.ERROR).size() == 1, "GuLog filters entries by minimum level")
+
+	var console_autoload := get_root().get_node_or_null("DevConsole")
+	_assert(console_autoload != null, "Autoload DevConsole exists on SceneTree root")
+
+	var console := DevConsoleScript.new()
+	console.input_router = ir2
+	get_root().add_child(console)
+	console.register_command("sum", "Add two ints", func(args: Array[String]) -> String:
+		return str(int(args[0]) + int(args[1]))
+	)
+	_assert(console.execute("sum 3 4") == "7", "DevConsole executes custom command")
+	console.set_open(true)
+	_assert(console.is_open() and not ir2.allow_debug(), "Opening DevConsole pushes MODAL context")
+	console.set_open(false)
+	_assert(not console.is_open() and ir2.allow_debug(), "Closing DevConsole restores gameplay context")
+
+	console.queue_free()
+	ir.free()
+	ir2.free()
+	store.free()
+	store2.free()
+	if FileAccess.file_exists(tmp_cfg):
+		DirAccess.remove_absolute(tmp_cfg)

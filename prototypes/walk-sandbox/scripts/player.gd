@@ -175,11 +175,19 @@ func _is_gameplay_input_allowed() -> bool:
 
 
 func _ensure_input_map() -> void:
-	_bind("move_left", [KEY_A, KEY_LEFT])
-	_bind("move_right", [KEY_D, KEY_RIGHT])
-	_bind("move_forward", [KEY_W, KEY_UP])
-	_bind("move_back", [KEY_S, KEY_DOWN])
-	_bind("sprint", [KEY_SHIFT])
+	var router := get_node_or_null("/root/InputRouter")
+	if router != null and router.has_method("register_action"):
+		router.call("register_action", &"move_left", [KEY_A, KEY_LEFT], "Move Left")
+		router.call("register_action", &"move_right", [KEY_D, KEY_RIGHT], "Move Right")
+		router.call("register_action", &"move_forward", [KEY_W, KEY_UP], "Move Forward")
+		router.call("register_action", &"move_back", [KEY_S, KEY_DOWN], "Move Back")
+		router.call("register_action", &"sprint", [KEY_SHIFT], "Toggle Run")
+	else:
+		_bind("move_left", [KEY_A, KEY_LEFT])
+		_bind("move_right", [KEY_D, KEY_RIGHT])
+		_bind("move_forward", [KEY_W, KEY_UP])
+		_bind("move_back", [KEY_S, KEY_DOWN])
+		_bind("sprint", [KEY_SHIFT])
 	_bind("action_gather", [KEY_1])
 	_bind("action_mine", [KEY_2])
 	_bind("action_chop", [KEY_3])
