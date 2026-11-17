@@ -1,6 +1,6 @@
 class_name CharacterActionController
 extends RefCounted
-## Pure-logic character action state machine (no SceneTree dependency).
+## Pure-logic character action state machine (no SceneTree or locomotion class dependency).
 ## Coordinates action validation, lifecycle phases, hit-beat callbacks,
 ## locomotion overrides, and clean cancellation/completion.
 
@@ -53,23 +53,27 @@ func get_current_spec() -> CharacterActionSpec:
 	return _spec
 
 
-func can_start(action_id: StringName, loco: CharacterLocomotion = null) -> Dictionary:
+func can_start(action_id: StringName, loco: Variant = null) -> Dictionary:
 	if _registry == null or not _registry.has_action(action_id):
 		return {"ok": false, "reason": &"unknown_action"}
 	var spec := _registry.get_spec(action_id)
 	if spec == null or not spec.is_valid():
 		return {"ok": false, "reason": &"invalid_spec"}
 	if loco != null:
-		if not spec.allow_in_water and loco.swim_amt > 0.35:
+		var swim_amt := _loco_float(loco, &"swim_amt", 0.0)
+		var is_climbing := _loco_bool(loco, &"is_climbing", false)
+		var climb_amt := _loco_float(loco, &"climb_amt", 0.0)
+		var water_depth := _loco_float(loco, &"water_depth", 0.0)
+		if not spec.allow_in_water and swim_amt > 0.35:
 			return {"ok": false, "reason": &"swimming"}
-		if not spec.allow_while_climbing and (loco.is_climbing or loco.climb_amt > 0.45):
+		if not spec.allow_while_climbing and (is_climbing or climb_amt > 0.45):
 			return {"ok": false, "reason": &"climbing"}
-		if loco.water_depth > spec.max_water_depth:
+		if water_depth > spec.max_water_depth:
 			return {"ok": false, "reason": &"water_too_deep"}
 	return {"ok": true, "reason": &""}
 
 
-func try_start(action_id: StringName, loco: CharacterLocomotion = null, context: Dictionary = {}) -> bool:
+func try_start(action_id: StringName, loco: Variant = null, context: Dictionary = {}) -> bool:
 	var check := can_start(action_id, loco)
 	if not bool(check.get("ok", false)):
 		last_cancel_reason = check.get("reason", &"blocked") as StringName
@@ -78,7 +82,6 @@ func try_start(action_id: StringName, loco: CharacterLocomotion = null, context:
 	var spec := _registry.get_spec(action_id)
 	if _spec != null:
 		if _spec.id == action_id and phase_state != Phase.IDLE:
-			# Refresh/extend active same action without snapping mid-swing.
 			_stop_requested = false
 			if context.has("continuous"):
 				_continuous = bool(context["continuous"])
@@ -147,7 +150,7 @@ func reset() -> void:
 
 func step(
 	delta: float,
-	loco: CharacterLocomotion = null,
+	loco: Variant = null,
 	move_input: Vector2 = Vector2.ZERO,
 	hold_active: bool = false
 ) -> Dictionary:
@@ -159,11 +162,15 @@ func step(
 
 	# 1) Environment guard while acting (e.g. pushed/drifted into deep water or cliff climb)
 	if loco != null:
-		if (not _spec.allow_in_water and loco.swim_amt > 0.45) or loco.water_depth > _spec.max_water_depth:
+		var swim_amt := _loco_float(loco, &"swim_amt", 0.0)
+		var water_depth := _loco_float(loco, &"water_depth", 0.0)
+		var is_climbing := _loco_bool(loco, &"is_climbing", false)
+		var climb_amt := _loco_float(loco, &"climb_amt", 0.0)
+		if (not _spec.allow_in_water and swim_amt > 0.45) or water_depth > _spec.max_water_depth:
 			cancel(&"water_depth")
 			blend_weight = move_toward(blend_weight, 0.0, 14.0 * dt)
 			return _build_frame(false)
-		if not _spec.allow_while_climbing and (loco.is_climbing or loco.climb_amt > 0.45):
+		if not _spec.allow_while_climbing and (is_climbing or climb_amt > 0.45):
 			cancel(&"climbing")
 			blend_weight = move_toward(blend_weight, 0.0, 14.0 * dt)
 			return _build_frame(false)
@@ -204,6 +211,34 @@ func step(
 	cycle_phase = clampf(next_raw, 0.0, 0.9999)
 	_update_phase_state()
 	return _build_frame(true)
+
+
+func _loco_float(loco: Variant, prop: StringName, fallback: float) -> float:
+	if loco is Dictionary:
+		var d := loco as Dictionary
+		if d.has(prop):
+			return float(d[prop])
+		var s := String(prop)
+		return float(d.get(s, fallback))
+	if loco is Object and is_instance_valid(loco):
+		var v: Variant = (loco as Object).get(prop)
+		if v != null:
+			return float(v)
+	return fallback
+
+
+func _loco_bool(loco: Variant, prop: StringName, fallback: bool) -> bool:
+	if loco is Dictionary:
+		var d := loco as Dictionary
+		if d.has(prop):
+			return bool(d[prop])
+		var s := String(prop)
+		return bool(d.get(s, fallback))
+	if loco is Object and is_instance_valid(loco):
+		var v: Variant = (loco as Object).get(prop)
+		if v != null:
+			return bool(v)
+	return fallback
 
 
 func _emit_beats_in_range(start_p: float, end_p: float) -> void:

@@ -23,6 +23,7 @@ const AudioManagerScript = preload("res://addons/gu_core/audio/audio_manager.gd"
 const SaveServiceScript = preload("res://addons/gu_core/save/save_service.gd")
 const UIRouterScript = preload("res://addons/gu_core/ui/ui_router.gd")
 const GameFlowScript = preload("res://addons/gu_core/flow/game_flow.gd")
+const EventBusScript = preload("res://addons/gu_core/events/event_bus.gd")
 
 const InteractableScript = preload("res://addons/gu_gameplay/interaction/interactable.gd")
 const InteractorScript = preload("res://addons/gu_gameplay/interaction/interactor.gd")
@@ -114,6 +115,9 @@ func _run_all() -> void:
 	_test_beacon_save_roundtrip()
 	_test_character_action_architecture()
 	_test_work_ik_and_tool_visual()
+	_test_event_bus()
+	_test_camera_rig_shake()
+	_test_stat_set_and_inventory()
 
 
 func _test_map_data_and_generator() -> void:
@@ -952,3 +956,121 @@ func _test_work_ik_and_tool_visual() -> void:
 	tool_vis.cleanup()
 	tool_vis.free()
 	model.free()
+
+
+func _test_event_bus() -> void:
+	var bus_autoload := get_root().get_node_or_null("EventBus")
+	_assert(bus_autoload != null, "Autoload EventBus exists on SceneTree root")
+
+	var bus := EventBusScript.new()
+	var received: Array[Dictionary] = []
+	var cb := func(payload: Dictionary) -> void: received.append(payload)
+
+	bus.subscribe(&"quest_step", cb)
+	bus.subscribe(&"quest_step", cb) # idempotent duplicate check
+	_assert(bus.get_subscriber_count(&"quest_step") == 1, "EventBus avoids duplicate callback subscriptions")
+
+	bus.emit_event(&"quest_step", {"step": 2})
+	_assert(received.size() == 1 and int(received[0]["step"]) == 2, "EventBus delivers payload to subscribers")
+
+	bus.unsubscribe(&"quest_step", cb)
+	bus.emit_event(&"quest_step", {"step": 3})
+	_assert(received.size() == 1, "EventBus stops delivering after unsubscribe")
+
+	var target := Node.new()
+	var obj_cb := Callable(target, "set_name")
+	bus.subscribe(&"rename_evt", obj_cb)
+	bus.unsubscribe_all(target)
+	_assert(bus.get_subscriber_count(&"rename_evt") == 0, "EventBus.unsubscribe_all removes target callbacks")
+	target.free()
+	bus.free()
+
+
+func _test_camera_rig_shake() -> void:
+	var host := Node3D.new()
+	get_root().add_child(host)
+
+	var rig := CameraRig.new()
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	rig.add_child(cam)
+	host.add_child(rig)
+
+	var target := Node3D.new()
+	target.position = Vector3(5.0, 1.0, -3.0)
+	host.add_child(target)
+
+	rig.set_target(target)
+	_assert(rig.global_position.is_equal_approx(Vector3(5.0, 1.0, -3.0) + CameraRig.DEFAULT_OFFSET), "CameraRig snaps to target on set_target")
+
+	rig.set_zoom(0.2)
+	_assert(is_equal_approx(rig.get_zoom(), CameraRig.ZOOM_MIN), "CameraRig clamps zoom min")
+
+	rig.add_shake(0.5, 0.4)
+	_assert(rig.get_shake_remaining() > 0.35, "CameraRig.add_shake schedules impulse")
+	rig._process(0.1)
+	_assert(rig.get_shake_remaining() < 0.35, "CameraRig decays shake over time")
+	rig._process(0.5)
+	_assert(is_equal_approx(cam.h_offset, 0.0) and is_equal_approx(cam.v_offset, 0.0), "CameraRig resets offsets after shake ends")
+
+	rig.clear_target()
+	host.free()
+
+
+func _test_stat_set_and_inventory() -> void:
+	# Decoupled Dictionary loco check for CharacterActionController
+	var ctrl := CharacterActionController.new()
+	_assert(ctrl.try_start(&"gather", {"swim_amt": 0.0, "is_climbing": false, "water_depth": 0.0}), "ActionController accepts Dictionary loco state")
+	_assert(not ctrl.try_start(&"chop", {"swim_amt": 0.9, "water_depth": 1.2}), "ActionController blocks swimming via Dictionary state")
+
+	var stats := StatSet.new()
+	stats.define_stat(&"hp", 100.0, 80.0)
+	stats.define_stat(&"stamina", 50.0)
+	_assert(is_equal_approx(stats.get_value(&"hp"), 80.0), "StatSet initializes custom initial value")
+	_assert(stats.spend(&"stamina", 20.0) and is_equal_approx(stats.get_value(&"stamina"), 30.0), "StatSet.spend deducts atomically")
+	_assert(not stats.spend(&"stamina", 40.0) and is_equal_approx(stats.get_value(&"stamina"), 30.0), "StatSet.spend fails safely on insufficient resource")
+
+	stats.add_modifier(&"hp", &"armor_buff", 50.0, 1.0)
+	_assert(is_equal_approx(stats.get_max(&"hp"), 150.0), "StatSet additive modifier scales max")
+	stats.set_value(&"hp", 150.0)
+	stats.remove_modifier(&"hp", &"armor_buff")
+	_assert(is_equal_approx(stats.get_value(&"hp"), 100.0), "Removing modifier clamps current value to new max")
+
+	var inv := InventoryContainer.new(2, 10)
+	var wood := ItemDef.new()
+	wood.id = &"wood"
+	wood.display_name = "Wood"
+	wood.max_stack = 5
+	inv.register_item(wood)
+
+	var leftover := inv.add_item(&"wood", 12)
+	_assert(leftover == 2, "InventoryContainer respects max_slots=2 and max_stack=5 (10 stored, 2 leftover)")
+	_assert(inv.count_item(&"wood") == 10 and inv.has_item(&"wood", 10), "InventoryContainer sums stacks accurately")
+	_assert(not inv.remove_item(&"wood", 11) and inv.count_item(&"wood") == 10, "Atomic remove_item leaves inventory intact when short")
+	_assert(inv.remove_item(&"wood", 7) and inv.count_item(&"wood") == 3, "remove_item drains across stacks accurately")
+
+	# SaveService round-trip for StatSet + InventoryContainer
+	var tmp_dir := "user://test_saves_p1"
+	var svc := SaveServiceScript.new()
+	svc.save_dir = tmp_dir
+	var err := svc.save_slot("p1_slot", {
+		"world": {"seed": 11},
+		"stats": stats.export_state(),
+		"inventory": inv.export_state(),
+	})
+	_assert(err == OK, "SaveService writes StatSet + InventoryContainer state")
+	var loaded := svc.load_slot("p1_slot")
+	_assert(bool(loaded.get("ok", false)), "SaveService reloads P1 slot")
+
+	var stats2 := StatSet.new()
+	stats2.apply_state((loaded["data"] as Dictionary).get("stats", {}) as Dictionary)
+	_assert(is_equal_approx(stats2.get_value(&"stamina"), 30.0), "StatSet restores stamina value across SaveService")
+
+	var inv2 := InventoryContainer.new()
+	inv2.apply_state((loaded["data"] as Dictionary).get("inventory", {}) as Dictionary)
+	_assert(inv2.count_item(&"wood") == 3 and inv2.max_slots == 2, "InventoryContainer restores items and max_slots across SaveService")
+
+	svc.delete_slot("p1_slot")
+	if DirAccess.dir_exists_absolute(tmp_dir):
+		DirAccess.remove_absolute(tmp_dir)
+	svc.free()

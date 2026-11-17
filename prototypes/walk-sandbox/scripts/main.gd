@@ -220,6 +220,13 @@ func _get_lit_beacon_ids() -> Array[String]:
 func _on_beacon_lit_changed(beacon: WorldBeacon, lit: bool) -> void:
 	_refresh_interaction_prompt()
 	_refresh_overlay()
+	var bus := get_node_or_null("/root/EventBus")
+	if bus != null and bus.has_method("emit_event"):
+		bus.call("emit_event", &"beacon_lit_changed", {
+			"id": beacon.interaction_id,
+			"index": beacon.beacon_index,
+			"lit": lit,
+		})
 	var flow := get_node_or_null("/root/GameFlow")
 	var ui := get_node_or_null("/root/UIRouter")
 	if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):

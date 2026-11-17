@@ -1,6 +1,6 @@
 class_name CameraRig
 extends Node3D
-## Smooth follow + zoom camera rig decoupled from world/main scene logic.
+## Smooth follow, zoom, and impulse screen-shake camera rig decoupled from world logic.
 
 const DEFAULT_OFFSET := Vector3(0.0, 7.5, 9.5)
 const ZOOM_MIN := 0.5
@@ -10,23 +10,34 @@ const FOLLOW_SPEED := 6.0
 
 @export var cam_offset: Vector3 = DEFAULT_OFFSET
 @export var look_height: float = 0.9
+@export var camera_path: NodePath = ^"Camera3D"
 
-@onready var _camera: Camera3D = $Camera3D
-
+var _camera: Camera3D = null
 var _target: Node3D = null
 var _zoom: float = 1.0
+var _shake_intensity: float = 0.0
+var _shake_duration: float = 0.0
+var _shake_remaining: float = 0.0
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	_rng.randomize()
+	_resolve_camera()
 	_bind_zoom_keys()
 
 
 func set_target(target: Node3D) -> void:
 	_target = target
-	if _target != null:
+	_resolve_camera()
+	if _target != null and is_instance_valid(_target):
 		global_position = _target.global_position + cam_offset * _zoom
-		if _camera != null:
+		if _camera != null and is_inside_tree():
 			_camera.look_at(_target.global_position + Vector3(0.0, look_height, 0.0), Vector3.UP)
+
+
+func clear_target() -> void:
+	_target = null
 
 
 func get_zoom() -> float:
@@ -35,6 +46,18 @@ func get_zoom() -> float:
 
 func set_zoom(value: float) -> void:
 	_zoom = clampf(value, ZOOM_MIN, ZOOM_MAX)
+
+
+func add_shake(intensity: float, duration: float = 0.25) -> void:
+	if intensity <= 0.0 or duration <= 0.0:
+		return
+	_shake_intensity = maxf(_shake_intensity, intensity)
+	_shake_duration = maxf(_shake_duration, duration)
+	_shake_remaining = maxf(_shake_remaining, duration)
+
+
+func get_shake_remaining() -> float:
+	return _shake_remaining
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -66,6 +89,42 @@ func _unhandled_input(event: InputEvent) -> void:
 		set_zoom(_zoom + ZOOM_STEP * sens)
 
 
+func _process(delta: float) -> void:
+	_resolve_camera()
+	if _target != null and is_instance_valid(_target):
+		var desired := _target.global_position + cam_offset * _zoom
+		global_position = global_position.lerp(desired, 1.0 - exp(-FOLLOW_SPEED * delta))
+		if _camera != null:
+			_camera.look_at(_target.global_position + Vector3(0.0, look_height, 0.0), Vector3.UP)
+
+	_step_shake(delta)
+
+
+func _step_shake(delta: float) -> void:
+	if _camera == null:
+		return
+	if _shake_remaining <= 0.0:
+		_camera.h_offset = 0.0
+		_camera.v_offset = 0.0
+		_shake_intensity = 0.0
+		_shake_duration = 0.0
+		return
+	_shake_remaining = maxf(0.0, _shake_remaining - delta)
+	var ratio := _shake_remaining / maxf(_shake_duration, 0.001)
+	var amp := _shake_intensity * ratio * ratio
+	_camera.h_offset = _rng.randf_range(-amp, amp)
+	_camera.v_offset = _rng.randf_range(-amp, amp)
+
+
+func _resolve_camera() -> void:
+	if _camera != null and is_instance_valid(_camera):
+		return
+	if not camera_path.is_empty():
+		_camera = get_node_or_null(camera_path) as Camera3D
+	if _camera == null:
+		_camera = get_node_or_null("Camera3D") as Camera3D
+
+
 func _is_gameplay_input_allowed() -> bool:
 	var router := get_node_or_null("/root/InputRouter")
 	if router != null and router.has_method("is_gameplay_active"):
@@ -78,15 +137,6 @@ func _zoom_sensitivity() -> float:
 	if store != null and store.has_method("get_value"):
 		return float(store.call("get_value", "camera_zoom_sensitivity", 1.0))
 	return 1.0
-
-
-func _process(delta: float) -> void:
-	if _target == null or not is_instance_valid(_target):
-		return
-	var desired := _target.global_position + cam_offset * _zoom
-	global_position = global_position.lerp(desired, 1.0 - exp(-FOLLOW_SPEED * delta))
-	if _camera != null:
-		_camera.look_at(_target.global_position + Vector3(0.0, look_height, 0.0), Vector3.UP)
 
 
 func _bind_zoom_keys() -> void:

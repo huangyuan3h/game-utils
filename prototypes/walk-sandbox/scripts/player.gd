@@ -153,11 +153,18 @@ func _is_any_action_held() -> bool:
 	return false
 
 
-func _on_action_beat(action_id: StringName, _beat_index: int, _cycle_count: int) -> void:
+func _on_action_beat(action_id: StringName, beat_index: int, cycle_count: int) -> void:
 	if _visual != null:
 		_visual.trigger_action_beat(action_id)
 	if _audio != null:
 		_audio.play_action_beat(action_id)
+	var bus := get_node_or_null("/root/EventBus")
+	if bus != null and bus.has_method("emit_event"):
+		bus.call("emit_event", &"character_action_beat", {
+			"action_id": action_id,
+			"beat_index": beat_index,
+			"cycle_count": cycle_count,
+		})
 
 
 func _is_gameplay_input_allowed() -> bool:

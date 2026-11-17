@@ -29,8 +29,17 @@ func _assert(cond: bool, msg: String) -> void:
 
 
 func _run_all() -> void:
-	for name in ["SettingsStore", "InputRouter", "AudioManager", "SaveService", "UIRouter", "GameFlow"]:
+	for name in ["SettingsStore", "InputRouter", "AudioManager", "SaveService", "UIRouter", "GameFlow", "EventBus"]:
 		_assert(get_root().get_node_or_null(name) != null, "Autoload %s present" % name)
+
+	var bus := get_root().get_node_or_null("EventBus")
+	if bus != null:
+		var hits := [0]
+		var cb := func(_p: Dictionary) -> void: hits[0] += 1
+		bus.call("subscribe", &"starter_ping", cb)
+		bus.call("emit_event", &"starter_ping", {})
+		bus.call("unsubscribe", &"starter_ping", cb)
+		_assert(hits[0] == 1, "EventBus delivers and unsubscribes events")
 
 	var am := get_root().get_node_or_null("AudioManager")
 	if am != null:
@@ -55,6 +64,16 @@ func _run_all() -> void:
 		_assert(is_equal_approx(float(ui.call("get_transition_alpha")), 1.0), "UIRouter.fade_out reaches opaque")
 		ui.call("fade_in", 0.0)
 		_assert(is_equal_approx(float(ui.call("get_transition_alpha")), 0.0), "UIRouter.fade_in returns transparent")
+
+	var ctrl := CharacterActionController.new()
+	_assert(ctrl.try_start(&"gather", {"swim_amt": 0.0}), "CharacterActionController works in starter without CharacterLocomotion")
+
+	var stats := StatSet.new()
+	stats.define_stat(&"hp", 100.0)
+	_assert(stats.spend(&"hp", 25.0) and is_equal_approx(stats.get_value(&"hp"), 75.0), "StatSet works in starter")
+
+	var inv := InventoryContainer.new()
+	_assert(inv.add_item(&"coin", 10) == 0 and inv.count_item(&"coin") == 10, "InventoryContainer works in starter")
 
 	var main_scene := load("res://scenes/main.tscn") as PackedScene
 	_assert(main_scene != null, "Starter main.tscn loads")

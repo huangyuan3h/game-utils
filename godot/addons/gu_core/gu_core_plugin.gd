@@ -9,6 +9,7 @@ const AUTOLOADS := {
 	"SaveService": "res://addons/gu_core/save/save_service.gd",
 	"UIRouter": "res://addons/gu_core/ui/ui_router.gd",
 	"GameFlow": "res://addons/gu_core/flow/game_flow.gd",
+	"EventBus": "res://addons/gu_core/events/event_bus.gd",
 }
 
 const BUS_LAYOUT_PATH := "res://addons/gu_core/audio/default_bus_layout.tres"
