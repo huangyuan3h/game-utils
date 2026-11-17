@@ -8,8 +8,9 @@ from pathlib import Path
 from game_utils_audio import __version__
 from game_utils_audio.bgm import acestep
 from game_utils_audio.menu import run_menu
-from game_utils_audio.paths import BGM_OUTPUT_DIR, SFX_OUTPUT_DIR, ensure_output_dirs
+from game_utils_audio.paths import BGM_OUTPUT_DIR, DEFAULT_GODOT_AUDIO_DIR, SFX_OUTPUT_DIR, ensure_output_dirs
 from game_utils_audio.sfx import builtin, jsfxr, library as sfx_library, rfxgen
+from game_utils_audio.sync import sync_audio_assets
 
 
 def _cmd_doctor(_: argparse.Namespace) -> int:
@@ -135,12 +136,33 @@ def _cmd_menu(_: argparse.Namespace) -> int:
     return run_menu()
 
 
+def _cmd_sync(args: argparse.Namespace) -> int:
+    target = Path(args.target) if args.target else DEFAULT_GODOT_AUDIO_DIR
+    res = sync_audio_assets(
+        target_dir=target,
+        dry_run=args.dry_run,
+        force=args.force,
+    )
+    mode = "DRY-RUN" if res.dry_run else "SYNC"
+    print(f"[{mode}] target={res.target_dir}")
+    print(
+        f"  copied={len(res.copied)} overwritten={len(res.overwritten)} "
+        f"skipped={len(res.skipped)} attribution={len(res.attribution_entries)}"
+    )
+    for rel in res.copied:
+        print(f"  + {rel}")
+    for rel in res.overwritten:
+        print(f"  ~ {rel}")
+    for rel in res.skipped:
+        print(f"  = {rel} (exists, skipped)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="gu-audio",
-        description="game-utils audio shell — realistic SFX collections + BGM (ACE-Step)",
+        description="game-utils audio shell — realistic SFX collections, BGM (ACE-Step), and Godot asset sync",
     )
-    parser.add_argument("--version", action="version", version=f"gu-audio {__version__}")
+    parser.add_argument("--version", action="version", version=f"gu {__version__}")
     sub = parser.add_subparsers(dest="command", required=False)
 
     p_menu = sub.add_parser("menu", help="Interactive launcher (default)")
@@ -215,6 +237,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_bgm_gen.add_argument("--api", default=acestep.DEFAULT_API, help="API base URL")
     p_bgm_gen.add_argument("--duration", type=float, default=None, help="Optional duration seconds")
     p_bgm_gen.set_defaults(func=_cmd_bgm_generate)
+
+    # --- Sync ---
+    p_sync = sub.add_parser("sync", help="Sync output/ audio assets to Godot project + ATTRIBUTION.json")
+    p_sync.add_argument(
+        "--target",
+        default=None,
+        help=f"Target Godot audio dir (default: {DEFAULT_GODOT_AUDIO_DIR})",
+    )
+    p_sync.add_argument("--dry-run", action="store_true", help="Preview sync without copying or writing files")
+    p_sync.add_argument("--force", action="store_true", help="Overwrite existing destination files")
+    p_sync.set_defaults(func=_cmd_sync)
 
     return parser
 

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="48" viewBox="0 0 160 48">
+  <defs>
+    <linearGradient id="btnNormGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#11264D" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#0A1732" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#071024" stop-opacity="0.97"/>
+    </linearGradient>
+  </defs>
+  <polygon points="12,3 148,3 157,24 148,45 12,45 3,24"
+           fill="url(#btnNormGrad)" stroke="#B88B32" stroke-width="1.8"/>
+  <polygon points="14,7 146,7 153,24 146,41 14,41 7,24"
+           fill="none" stroke="#147EA6" stroke-opacity="0.55" stroke-width="1"/>
+  <!-- Left & right psionic nodes -->
+  <polygon points="11,21 15,24 11,27 7,24" fill="#38E8FF" fill-opacity="0.75"/>
+  <polygon points="149,21 153,24 149,27 145,24" fill="#38E8FF" fill-opacity="0.75"/>
+</svg>

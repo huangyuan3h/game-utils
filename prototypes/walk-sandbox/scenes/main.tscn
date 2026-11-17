@@ -1,13 +1,38 @@
-[gd_scene load_steps=5 format=3 uid="uid://bp3c3rr5u5bwy"]
+[gd_scene load_steps=11 format=3 uid="uid://bp3c3rr5u5bwy"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/player.gd" id="2_player"]
 [ext_resource type="PackedScene" path="res://scenes/sky_time.tscn" id="3_sky"]
 [ext_resource type="PackedScene" path="res://scenes/terrain_map.tscn" id="4_terrain"]
+[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="5_camera_rig"]
+[ext_resource type="Script" path="res://scripts/ui/debug_overlay.gd" id="6_debug_overlay"]
+[ext_resource type="Theme" path="res://addons/gu_core/ui/protoss/protoss_theme.tres" id="7_protoss_theme"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/panel_hud.svg" id="8_panel_hud"]
+[ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_holo_panel.gdshader" id="9_holo"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_player"]
 radius = 0.28
 height = 1.5
+
+[sub_resource type="StyleBoxTexture" id="StyleBox_hud_panel"]
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+texture = ExtResource("8_panel_hud")
+texture_margin_left = 18.0
+texture_margin_top = 18.0
+texture_margin_right = 18.0
+texture_margin_bottom = 18.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMat_hud_holo"]
+shader = ExtResource("9_holo")
+shader_parameter/scan_color = Color(0.22, 0.91, 1, 1)
+shader_parameter/gold_rim_color = Color(0.95, 0.81, 0.4, 1)
+shader_parameter/grid_alpha = 0.03
+shader_parameter/scan_alpha = 0.055
+shader_parameter/scan_speed = 0.18
+shader_parameter/rim_alpha = 0.045
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -42,17 +67,153 @@ bus = &"Master"
 
 [node name="CameraPivot" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.5, 9.5)
+script = ExtResource("5_camera_rig")
 
 [node name="Camera3D" type="Camera3D" parent="CameraPivot"]
 current = true
 fov = 50.0
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
+script = ExtResource("6_debug_overlay")
 
-[node name="HUD" type="Label" parent="CanvasLayer"]
-offset_left = 16.0
-offset_top = 12.0
-offset_right = 720.0
-offset_bottom = 200.0
-theme_override_font_sizes/font_size = 18
-text = "Walk Sandbox"
+[node name="HudRoot" type="Control" parent="CanvasLayer"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("7_protoss_theme")
+
+[node name="TelemetryPanel" type="PanelContainer" parent="CanvasLayer/HudRoot"]
+custom_minimum_size = Vector2(480, 0)
+layout_mode = 0
+offset_left = 14.0
+offset_top = 14.0
+offset_right = 494.0
+offset_bottom = 14.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_hud_panel")
+
+[node name="HoloOverlay" type="ColorRect" parent="CanvasLayer/HudRoot/TelemetryPanel"]
+layout_mode = 2
+mouse_filter = 2
+material = SubResource("ShaderMat_hud_holo")
+
+[node name="VBox" type="VBoxContainer" parent="CanvasLayer/HudRoot/TelemetryPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="HeaderRow" type="HBoxContainer" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.22, 0.91, 1, 0.95)
+theme_override_font_sizes/font_size = 11
+text = "KHALAI TELEMETRY // SECTOR SCAN"
+
+[node name="StatusBadge" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/HeaderRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_font_sizes/font_size = 11
+text = "WALK · ZOOM 100%"
+horizontal_alignment = 2
+
+[node name="TelemetryLabel" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Terrain: ? · Biome: ?"
+
+[node name="BeaconsRow" type="HBoxContainer" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="BeaconsTitle" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/BeaconsRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.72, 0.88, 0.95)
+theme_override_font_sizes/font_size = 12
+text = "BEACONS:"
+
+[node name="BeaconsLabel" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/BeaconsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.79, 1)
+theme_override_font_sizes/font_size = 12
+text = "[1] [2] [3] [4] [5] [6]"
+
+[node name="CommandCard" type="PanelContainer" parent="CanvasLayer/HudRoot"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -14.0
+offset_top = -14.0
+offset_right = -14.0
+offset_bottom = -14.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBox_hud_panel")
+
+[node name="HoloOverlay" type="ColorRect" parent="CanvasLayer/HudRoot/CommandCard"]
+layout_mode = 2
+mouse_filter = 2
+material = SubResource("ShaderMat_hud_holo")
+
+[node name="VBox" type="VBoxContainer" parent="CanvasLayer/HudRoot/CommandCard"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="CmdTitle" type="Label" parent="CanvasLayer/HudRoot/CommandCard/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_font_sizes/font_size = 11
+text = "COMMAND MATRIX"
+
+[node name="CmdBody" type="Label" parent="CanvasLayer/HudRoot/CommandCard/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.76, 0.87, 0.97, 0.95)
+theme_override_font_sizes/font_size = 12
+text = "[WASD] Move · [SHIFT] Run · [E] Interact · [Scroll] Zoom
+[1-4] Gather/Mine/Chop/Build · [F] Repeat · [X] Cancel
+[G] Warp Map · [V] Landform · [T/Y/L] Sky/Weather/Bolt
+[F3] Toggle HUD · [ESC] Stasis Menu"
+
+[node name="InteractionPromptPanel" type="PanelContainer" parent="CanvasLayer"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -160.0
+offset_top = -96.0
+offset_right = 160.0
+offset_bottom = -48.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme = ExtResource("7_protoss_theme")
+theme_override_styles/panel = SubResource("StyleBox_hud_panel")
+
+[node name="InteractionPromptLabel" type="Label" parent="CanvasLayer/InteractionPromptPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "[E] Interact"
+horizontal_alignment = 1
+vertical_alignment = 1

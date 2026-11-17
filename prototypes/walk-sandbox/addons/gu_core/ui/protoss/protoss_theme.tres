@@ -1,0 +1,216 @@
+[gd_resource type="Theme" load_steps=26 format=3]
+
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/panel_frame.svg" id="1_panel"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/btn_normal.svg" id="2_btn_norm"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/btn_hover.svg" id="3_btn_hover"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/btn_pressed.svg" id="4_btn_press"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/btn_disabled.svg" id="5_btn_dis"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/slider_grabber.svg" id="6_grabber"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/slider_grabber_hl.svg" id="7_grabber_hl"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/check_on.svg" id="8_check_on"]
+[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/check_off.svg" id="9_check_off"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBox_panel"]
+content_margin_left = 28.0
+content_margin_top = 24.0
+content_margin_right = 28.0
+content_margin_bottom = 24.0
+texture = ExtResource("1_panel")
+texture_margin_left = 28.0
+texture_margin_top = 28.0
+texture_margin_right = 28.0
+texture_margin_bottom = 28.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBox_btn_normal"]
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+texture = ExtResource("2_btn_norm")
+texture_margin_left = 22.0
+texture_margin_top = 12.0
+texture_margin_right = 22.0
+texture_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBox_btn_hover"]
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+texture = ExtResource("3_btn_hover")
+texture_margin_left = 22.0
+texture_margin_top = 12.0
+texture_margin_right = 22.0
+texture_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBox_btn_pressed"]
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+texture = ExtResource("4_btn_press")
+texture_margin_left = 22.0
+texture_margin_top = 12.0
+texture_margin_right = 22.0
+texture_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBox_btn_disabled"]
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+texture = ExtResource("5_btn_dis")
+texture_margin_left = 22.0
+texture_margin_top = 12.0
+texture_margin_right = 22.0
+texture_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_chk_normal"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.04, 0.08, 0.17, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.36, 0.14, 0.65)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_chk_hover"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.07, 0.15, 0.30, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.81, 0.40, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_chk_pressed"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.06, 0.16, 0.30, 0.90)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.22, 0.91, 1.0, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_slider_bg"]
+content_margin_top = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.03, 0.06, 0.13, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.36, 0.14, 0.80)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_slider_fill"]
+content_margin_top = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.13, 0.68, 0.84, 0.92)
+border_width_top = 1
+border_color = Color(0.42, 0.95, 1.0, 0.95)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_slider_fill_hl"]
+content_margin_top = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.22, 0.91, 1.0, 0.98)
+border_width_top = 1
+border_color = Color(0.85, 0.99, 1.0, 1.0)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxLine" id="StyleBox_separator"]
+color = Color(0.72, 0.55, 0.20, 0.55)
+thickness = 1
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_progress_bg"]
+bg_color = Color(0.03, 0.06, 0.12, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.36, 0.14, 0.80)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_progress_fill"]
+bg_color = Color(0.18, 0.80, 0.94, 0.95)
+border_width_top = 1
+border_color = Color(0.55, 0.97, 1.0, 1.0)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[resource]
+default_font_size = 15
+Button/colors/font_color = Color(0.96, 0.91, 0.79, 1)
+Button/colors/font_disabled_color = Color(0.48, 0.58, 0.70, 0.80)
+Button/colors/font_focus_color = Color(0.75, 0.96, 1, 1)
+Button/colors/font_hover_color = Color(1, 0.96, 0.84, 1)
+Button/colors/font_pressed_color = Color(0.42, 0.95, 1, 1)
+Button/styles/disabled = SubResource("StyleBox_btn_disabled")
+Button/styles/focus = SubResource("StyleBox_btn_hover")
+Button/styles/hover = SubResource("StyleBox_btn_hover")
+Button/styles/normal = SubResource("StyleBox_btn_normal")
+Button/styles/pressed = SubResource("StyleBox_btn_pressed")
+CheckButton/colors/font_color = Color(0.84, 0.91, 0.98, 1)
+CheckButton/colors/font_focus_color = Color(0.75, 0.96, 1, 1)
+CheckButton/colors/font_hover_color = Color(0.98, 0.93, 0.78, 1)
+CheckButton/colors/font_pressed_color = Color(0.42, 0.95, 1, 1)
+CheckButton/icons/checked = ExtResource("8_check_on")
+CheckButton/icons/checked_disabled = ExtResource("9_check_off")
+CheckButton/icons/unchecked = ExtResource("9_check_off")
+CheckButton/icons/unchecked_disabled = ExtResource("9_check_off")
+CheckButton/styles/focus = SubResource("StyleBox_chk_hover")
+CheckButton/styles/hover = SubResource("StyleBox_chk_hover")
+CheckButton/styles/hover_pressed = SubResource("StyleBox_chk_hover")
+CheckButton/styles/normal = SubResource("StyleBox_chk_normal")
+CheckButton/styles/pressed = SubResource("StyleBox_chk_pressed")
+HSeparator/constants/separation = 8
+HSeparator/styles/separator = SubResource("StyleBox_separator")
+HSlider/icons/grabber = ExtResource("6_grabber")
+HSlider/icons/grabber_disabled = ExtResource("6_grabber")
+HSlider/icons/grabber_highlight = ExtResource("7_grabber_hl")
+HSlider/styles/grabber_area = SubResource("StyleBox_slider_fill")
+HSlider/styles/grabber_area_highlight = SubResource("StyleBox_slider_fill_hl")
+HSlider/styles/slider = SubResource("StyleBox_slider_bg")
+Label/colors/font_color = Color(0.84, 0.91, 0.98, 1)
+Label/colors/font_shadow_color = Color(0.02, 0.05, 0.12, 0.85)
+Label/constants/shadow_offset_x = 1
+Label/constants/shadow_offset_y = 1
+PanelContainer/styles/panel = SubResource("StyleBox_panel")
+ProgressBar/styles/background = SubResource("StyleBox_progress_bg")
+ProgressBar/styles/fill = SubResource("StyleBox_progress_fill")

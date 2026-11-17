@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0D1C38" stop-opacity="0.94"/>
+      <stop offset="50%" stop-color="#071022" stop-opacity="0.93"/>
+      <stop offset="100%" stop-color="#040A16" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="goldFrame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F2CF66"/>
+      <stop offset="45%" stop-color="#B88B32"/>
+      <stop offset="100%" stop-color="#7A5A1B"/>
+    </linearGradient>
+  </defs>
+  <!-- Main octagonal body -->
+  <polygon points="16,4 112,4 124,16 124,112 112,124 16,124 4,112 4,16"
+           fill="url(#bgGrad)" stroke="url(#goldFrame)" stroke-width="2.5"/>
+  <!-- Inner recessed border -->
+  <polygon points="18,9 110,9 119,18 119,110 110,119 18,119 9,110 9,18"
+           fill="none" stroke="#147EA6" stroke-opacity="0.55" stroke-width="1"/>
+  <!-- Top & bottom center psionic conduits (stays centered in 9-slice) -->
+  <polygon points="44,4 84,4 80,8 48,8" fill="#B88B32"/>
+  <rect x="52" y="5" width="24" height="2" rx="1" fill="#38E8FF"/>
+  <polygon points="44,124 84,124 80,120 48,120" fill="#B88B32"/>
+  <rect x="52" y="121" width="24" height="2" rx="1" fill="#38E8FF"/>
+  <!-- Corner Khalai rivets (within 28px corner margins) -->
+  <polygon points="12,12 18,12 12,18" fill="#F2CF66"/>
+  <polygon points="116,12 110,12 116,18" fill="#F2CF66"/>
+  <polygon points="12,116 18,116 12,110" fill="#F2CF66"/>
+  <polygon points="116,116 110,116 116,110" fill="#F2CF66"/>
+  <!-- Corner psionic nodes -->
+  <polygon points="17,13 21,17 17,21 13,17" fill="#38E8FF" fill-opacity="0.9"/>
+  <polygon points="111,13 115,17 111,21 107,17" fill="#38E8FF" fill-opacity="0.9"/>
+  <polygon points="17,107 21,111 17,115 13,111" fill="#38E8FF" fill-opacity="0.9"/>
+  <polygon points="111,107 115,111 111,115 107,111" fill="#38E8FF" fill-opacity="0.9"/>
+</svg>

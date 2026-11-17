@@ -7,9 +7,10 @@ Minimal Godot 4.6 prototype for natural on-foot movement.
 - **Quaternius AnimatedHuman** (CC0) with **Idle / Walk / Run** clips
 - **Shift** toggles run (faster + Run clip + quicker footfalls)
 - Soft footstep “da-da” WAVs under `assets/sfx/` (placeholder Foley; swap later)
-- **Day/night time system**: sun disc, moon, stars, drifting clouds, weather
+- **Day/night time system**: sun disc, moon, twinkling stars, procedural multi-layer clouds, weather, fog, thunder & lightning
   - **T** — cycle time speed (`1× → 30× → 120× → 600×`)
-  - **Y** — cycle weather (`Clear → Cloudy → Overcast → Rain`)
+  - **Y** — cycle weather (`Clear → Cloudy → Overcast → Rain → Storm → Snow`)
+  - **L** — trigger a lightning bolt & delayed thunderclap
 - Smooth acceleration + yaw turn
 - 8-direction move (WASD / arrows)
 - **Zoom**: trackpad two-finger scroll (or pinch); mouse wheel / `+` `-` also work
@@ -19,8 +20,8 @@ Minimal Godot 4.6 prototype for natural on-foot movement.
   - **Three water bodies**:
     - **Sea** — coastal plane, shore foam
     - **Lake** — inland closed basins, still teal surface
-    - **River** — mountain spring → downhill → lake or sea (ribbons)
-  - Scale: river ≈ **3.4 m** at source, **~9.6 m** at mouth (wider than the ~1.5 m character)
+    - **River** — mountain spring → main creek + tributaries → lake or sea
+  - Scale: creek ≈ **1.3 m** at spring, **~4.4 m** at mouth (human-wadeable)
   - **All cells walkable** — height-follow (no mesh trapping)
   - **`MapGenerator.generate_random(seed, opts)`** — abstract random map API
   - **G** calls `TerrainMap.generate_random()` for a new map

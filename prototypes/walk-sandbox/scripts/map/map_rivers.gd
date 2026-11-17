@@ -16,12 +16,16 @@ static func river_depth(along: float) -> float:
 
 
 ## --- Rivers ---------------------------------------------------------------
-## Guarantee algorithm:
+## Watershed algorithm:
 ##   1. Pick highland springs
-##   2. Flow downhill (prefer sea; lakes allowed)
-##   3. If no water hit → steer to nearest sea/lake until hit (always succeeds)
-##   4. Meander gently, then snap the tip into the water body
-##   5. Drop only duplicates / tiny stubs — never keep a river without an outlet
+##   2. Trace downhill (prefer sea; lakes allowed) with guaranteed outlet
+##   3. Choose one main stem to the sea
+##   4. Join up to two tributaries into that stem (not parallel canals to the coast)
+##   5. Meander at ~2.5–4× local half-width, soft mouth into water
+
+const JOIN_DIST := 10.0
+const MAX_TRIBUTARIES := 2
+
 
 static func _trace_rivers(
 	heights: PackedFloat32Array,
@@ -60,7 +64,7 @@ static func _trace_rivers(
 		if not forced.is_empty():
 			candidates.append(forced)
 
-	return _pick_best_rivers(candidates, 2)
+	return _assemble_watershed(candidates)
 
 
 static func _collect_river_sources(
@@ -144,7 +148,7 @@ static func _build_guaranteed_river(
 	var pts := PackedVector2Array()
 	for cell in path:
 		pts.append(MapHeightfield._cell_world(cell.x, cell.y, grid, size))
-	pts = _sine_meander_path(pts, size, sea_edge, rng)
+	pts = _meander_path(pts, heights, grid, size, rng)
 	if outlet == "sea":
 		pts = MapLakes._push_polyline_from_lakes(pts, lakes, MapTypes.LAKE_RIVER_GAP * 0.85, 0.0)
 	else:
@@ -183,7 +187,10 @@ static func _trace_downhill_to_water(
 	var cur := src
 	var prev := Vector2i(0, 0)
 	var outlet := ""
-	for _step in 220:
+	var max_steps := maxi(240, grid * 3)
+	var lowest_h := heights[MapHeightfield._i(grid, cur.x, cur.y)]
+	var stall_steps := 0
+	for _step in max_steps:
 		if visited.has(cur):
 			break
 		visited[cur] = true
@@ -195,9 +202,16 @@ static func _trace_downhill_to_water(
 		if cb == MapTypes.Biome.LAKE and mode != "sea":
 			outlet = "lake"
 			break
+		var cur_h := heights[MapHeightfield._i(grid, cur.x, cur.y)]
+		if cur_h < lowest_h - 0.02:
+			lowest_h = cur_h
+			stall_steps = 0
+		else:
+			stall_steps += 1
+			if stall_steps >= 12:
+				break
 		var best_n := Vector2i(-9999, -9999)
 		var best_score := 1e30
-		var cur_h := heights[MapHeightfield._i(grid, cur.x, cur.y)]
 		for d: Vector2i in [
 			Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 			Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
@@ -233,19 +247,19 @@ static func _trace_downhill_to_water(
 				else:
 					score += lake_d * 0.04
 			elif mode == "sea":
-				score -= sea_p * 0.55
+				score -= sea_p * 1.15
 				for lake in lakes:
 					var gap := nwx.distance_to(lake["center"] as Vector2) - float(lake["radius"])
 					if gap < MapTypes.LAKE_RIVER_GAP:
 						score += (MapTypes.LAKE_RIVER_GAP - gap) * 1.2
 			else: # any
-				score -= sea_p * 0.35
+				score -= sea_p * 0.65
 				if not lakes.is_empty():
 					score += nwx.distance_to(lakes[0]["center"] as Vector2) * 0.01
 			if prev != Vector2i(0, 0):
-				var come: Vector2i = cur - prev
-				if d == -come:
-					score += 0.3
+				var come := Vector2(cur - prev).normalized()
+				var step_d := Vector2(d).normalized()
+				score -= come.dot(step_d) * 0.10
 			if score < best_score:
 				best_score = score
 				best_n = n
@@ -279,7 +293,8 @@ static func _steer_to_nearest_water(
 	var cur: Vector2i = from if path.is_empty() else path[path.size() - 1]
 	var target := _pick_water_target_cell(cur, biomes, grid, size, sea_edge, lakes, mode)
 	var outlet := ""
-	for _step in 260:
+	var max_steps := maxi(280, grid * 3)
+	for _step in max_steps:
 		if visited.has(cur) and path.size() > existing.size() + 2:
 			# mild escape: jump toward target
 			cur = Vector2i(
@@ -430,9 +445,11 @@ static func _force_river_to_sea(
 	var pts := PackedVector2Array()
 	for cell in path:
 		pts.append(MapHeightfield._cell_world(cell.x, cell.y, grid, size))
-	pts = _sine_meander_path(pts, size, sea_edge, rng)
+	pts = _meander_path(pts, heights, grid, size, rng)
 	pts = MapLakes._push_polyline_from_lakes(pts, lakes, MapTypes.LAKE_RIVER_GAP * 0.7, 0.0)
-	pts = _hard_guarantee_mouth(pts, "sea", lakes, sea_edge, size)
+	pts = _snap_mouth_into_water(pts, "sea", lakes, sea_edge, size)
+	if not _river_reaches_outlet(pts, "sea", lakes, sea_edge, size):
+		pts = _hard_guarantee_mouth(pts, "sea", lakes, sea_edge, size)
 	return {
 		"pts": pts,
 		"src": src,
@@ -451,64 +468,90 @@ static func _river_reaches_outlet(
 	var end: Vector2 = pts[pts.size() - 1]
 	if outlet == "lake":
 		for lake in lakes:
-			if end.distance_to(lake["center"] as Vector2) <= float(lake["radius"]) * 0.95:
+			if end.distance_to(lake["center"] as Vector2) <= float(lake["radius"]) * 1.04:
 				return true
 		return false
-	return MapHeightfield._sea_proximity(end.x, end.y, size, sea_edge) >= 0.70
+	return MapHeightfield._sea_proximity(end.x, end.y, size, sea_edge) >= 0.66
 
 
 static func _snap_mouth_into_water(
 	pts: PackedVector2Array, outlet: String, lakes: Array, sea_edge: int, size: float
 ) -> PackedVector2Array:
-	## Soft natural entry: ease the last stretch into sea/lake, then hard-guarantee tip.
+	## Terminate cleanly inside the shallow shore zone (~0.8-1.4 m past water's edge),
+	## never piercing across the middle of a lake or shooting out into deep sea.
 	if pts.size() < 2:
 		return pts
-	var out := pts.duplicate()
-	var last: Vector2 = out[out.size() - 1]
-	var prev: Vector2 = out[out.size() - 2]
-	var flow := (last - prev).normalized()
-	if flow.length_squared() < 1e-6:
-		flow = _sea_outward(sea_edge)
+	var out := PackedVector2Array()
 	if outlet == "lake" and not lakes.is_empty():
+		var tip0: Vector2 = pts[pts.size() - 1]
 		var best_i := 0
 		var best_d := INF
 		for i in lakes.size():
-			var d: float = last.distance_to(lakes[i]["center"] as Vector2)
+			var d: float = tip0.distance_to(lakes[i]["center"] as Vector2)
 			if d < best_d:
 				best_d = d
 				best_i = i
 		var c: Vector2 = lakes[best_i]["center"]
 		var r: float = float(lakes[best_i]["radius"])
+		var shore_stop := maxf(r * 0.68, r - 2.8)
+		for p in pts:
+			for lk in lakes:
+				var lc: Vector2 = lk["center"]
+				var lr: float = float(lk["radius"])
+				var lstop := maxf(lr * 0.68, lr - 2.8)
+				if p.distance_to(lc) <= lstop and out.size() >= 2:
+					var prev: Vector2 = out[out.size() - 1]
+					var d_prev := prev.distance_to(lc)
+					if d_prev > lstop:
+						var frac := clampf((d_prev - lstop) / maxf(d_prev - p.distance_to(lc), 0.01), 0.0, 1.0)
+						out.append(prev.lerp(p, frac))
+					return out
+			out.append(p)
+		var last: Vector2 = out[out.size() - 1]
 		var to_c := (c - last).normalized()
-		var enter := (flow * 0.3 + to_c * 0.7).normalized()
-		out.append(last + enter * maxf(2.0, r * 0.25))
-		out.append(c - to_c * (r * 0.45))
-		out.append(c - to_c * (r * 0.18))
-	else:
-		var outward := _sea_outward(sea_edge)
-		var dir := (flow * 0.45 + outward * 0.55).normalized()
-		out.append(last + dir * (size * 0.03))
-		out.append(last + dir * (size * 0.055) + outward * (size * 0.02))
-		out.append(_sea_mouth_anchor(size, sea_edge, last))
+		if last.distance_to(c) > shore_stop:
+			out.append(c - to_c * shore_stop)
+		return out
+
+	# Sea outlet: extend smoothly ~3 m past the surf line so estuary plume overlaps sea shelf
+	const SEA_STOP := 0.755
+	for p in pts:
+		var sp := MapHeightfield._sea_proximity(p.x, p.y, size, sea_edge)
+		if sp >= SEA_STOP and out.size() >= 2:
+			var prev_p: Vector2 = out[out.size() - 1]
+			var sp0 := MapHeightfield._sea_proximity(prev_p.x, prev_p.y, size, sea_edge)
+			var u := clampf((SEA_STOP - sp0) / maxf(sp - sp0, 0.001), 0.0, 1.0)
+			out.append(prev_p.lerp(p, u))
+			return out
+		out.append(p)
+	var last_s: Vector2 = out[out.size() - 1]
+	var prev_s: Vector2 = out[out.size() - 2]
+	var flow := (last_s - prev_s).normalized()
+	if flow.length_squared() < 1e-6:
+		flow = _sea_outward(sea_edge)
+	var outward := _sea_outward(sea_edge)
+	var dir := (flow * 0.55 + outward * 0.45).normalized()
+	if MapHeightfield._sea_proximity(last_s.x, last_s.y, size, sea_edge) < 0.76:
+		out.append(last_s + dir * (size * 0.035))
 	return out
 
 
 static func _sea_mouth_anchor(size: float, sea_edge: int, near: Vector2) -> Vector2:
-	## A point firmly in open coastal water, biased toward the river approach.
+	## Firm coastal tip in the shallow surf band, used only by the fallback.
 	var half := size * 0.5
 	var outward := _sea_outward(sea_edge)
-	var edge := outward * (half * 0.92)
+	var edge := outward * (half * 0.52)
 	match sea_edge:
 		0, 1:
-			return Vector2(clampf(near.x, -half * 0.7, half * 0.7), edge.y)
+			return Vector2(clampf(near.x, -half * 0.55, half * 0.55), edge.y)
 		_:
-			return Vector2(edge.x, clampf(near.y, -half * 0.7, half * 0.7))
+			return Vector2(edge.x, clampf(near.y, -half * 0.55, half * 0.55))
 
 
 static func _hard_guarantee_mouth(
 	pts: PackedVector2Array, outlet: String, lakes: Array, sea_edge: int, size: float
 ) -> PackedVector2Array:
-	## Last resort: append a tip that geometrically lies inside the water body.
+	## Fallback: stop right inside the shore rim if the path fell short.
 	if pts.is_empty():
 		return pts
 	var out := pts.duplicate()
@@ -523,8 +566,11 @@ static func _hard_guarantee_mouth(
 				best_i = i
 		var c: Vector2 = lakes[best_i]["center"]
 		var r: float = float(lakes[best_i]["radius"])
-		out.append(c.lerp(last, 0.15))
-		out.append(c + (last - c).normalized() * (r * 0.15))
+		var shore_stop := maxf(r * 0.72, r - 2.4)
+		var away := (last - c).normalized()
+		if away.length_squared() < 1e-6:
+			away = Vector2(1, 0)
+		out.append(c + away * shore_stop)
 	else:
 		out.append(_sea_mouth_anchor(size, sea_edge, last))
 	return out
@@ -544,52 +590,139 @@ static func _polyline_min_dist(pts: PackedVector2Array, p: Vector2) -> float:
 	return best
 
 
-static func _pick_best_rivers(candidates: Array, want: int) -> Array:
-	## Prefer long near-spawn streams; keep ≥1 sea river when available; ≤1 lake feeder.
+static func _candidate_score(c: Dictionary) -> float:
+	var s: float = float(c["len"]) - float(c["near"]) * 1.3 + float(c.get("lake_clear", 0.0)) * 0.4
+	if str(c["outlet"]) == "sea":
+		s += 18.0
+	elif str(c["outlet"]) == "lake":
+		s += 4.0
+	return s
+
+
+static func _try_join_tributary(
+	trib: PackedVector2Array, main: PackedVector2Array
+) -> PackedVector2Array:
+	## Merge a side stream smoothly into the main stem along a downstream V-confluence.
+	if trib.size() < 6 or main.size() < 6:
+		return PackedVector2Array()
+	var best_i := -1
+	var best_j := -1
+	var best_score := INF
+	var main_start := int(main.size() * 0.20)
+	var main_end := main.size() - 4
+	if main_end <= main_start:
+		return PackedVector2Array()
+	for i in range(3, trib.size()):
+		var p: Vector2 = trib[i]
+		var tdir := (p - trib[maxi(0, i - 2)]).normalized()
+		for j in range(main_start, main_end):
+			var q: Vector2 = main[j]
+			var d: float = p.distance_to(q)
+			if d > JOIN_DIST:
+				continue
+			var mdir := (main[mini(main.size() - 1, j + 2)] - q).normalized()
+			var align := tdir.dot(mdir)
+			if align < -0.15:
+				continue
+			# Prefer close approaches that naturally point downstream.
+			var score := d - align * 2.2
+			if score < best_score:
+				best_score = score
+				best_i = i
+				best_j = j
+	if best_i < 3 or best_j < 0:
+		return PackedVector2Array()
+
+	# Step slightly upstream on the tributary and slightly downstream on the main stem
+	# so a cubic Bezier joins them tangent-to-tangent with no Z-kink.
+	var cut_i := maxi(2, best_i - 2)
+	var merge_j := mini(main.size() - 2, best_j + 3)
+	var p0: Vector2 = trib[cut_i]
+	var p3: Vector2 = main[merge_j]
+	var t0 := (p0 - trib[maxi(0, cut_i - 2)]).normalized()
+	var t3 := (main[mini(main.size() - 1, merge_j + 2)] - p3).normalized()
+	var chord := p0.distance_to(p3)
+	if chord < 0.8:
+		chord = 0.8
+	var h := clampf(chord * 0.42, 0.8, 4.5)
+	var p1 := p0 + t0 * h
+	var p2 := p3 - t3 * h
+
+	var out := PackedVector2Array()
+	for i in range(cut_i + 1):
+		out.append(trib[i])
+	for k in range(1, 6):
+		var u := float(k) / 5.0
+		var iu := 1.0 - u
+		var bp := p0 * (iu * iu * iu) + p1 * (3.0 * iu * iu * u) + p2 * (3.0 * iu * u * u) + p3 * (u * u * u)
+		out.append(bp)
+	var sanitized := _sanitize_polyline(out)
+	if sanitized.is_empty() or sanitized[sanitized.size() - 1].distance_to(p3) > 1.5:
+		return PackedVector2Array()
+	return sanitized
+
+
+static func _assemble_watershed(candidates: Array) -> Array:
+	## One main stem to sea/lake + up to two tributaries that merge into it.
 	if candidates.is_empty():
 		return []
 	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		var sa: float = float(a["len"]) - float(a["near"]) * 1.3 + float(a.get("lake_clear", 0.0)) * 0.4
-		var sb: float = float(b["len"]) - float(b["near"]) * 1.3 + float(b.get("lake_clear", 0.0)) * 0.4
-		if str(a["outlet"]) == "sea":
-			sa += 14.0
-		if str(b["outlet"]) == "sea":
-			sb += 14.0
-		return sa > sb
+		return _candidate_score(a) > _candidate_score(b)
 	)
-	var picked: Array = []
+	var main: Dictionary = {}
+	for c in candidates:
+		if str(c["outlet"]) == "sea":
+			main = c
+			break
+	if main.is_empty():
+		main = candidates[0]
+	var main_pts: PackedVector2Array = main["pts"]
+	var picked: Array = [main_pts]
 	var used_src: Dictionary = {}
-	var lake_rivers := 0
+	used_src["%d,%d" % [(main["src"] as Vector2i).x, (main["src"] as Vector2i).y]] = true
+	var tributes := 0
 	for c in candidates:
-		if str(c["outlet"]) != "sea":
-			continue
-		used_src["%d,%d" % [(c["src"] as Vector2i).x, (c["src"] as Vector2i).y]] = true
-		picked.append(c["pts"])
-		break
-	for c in candidates:
-		if picked.size() >= want:
+		if tributes >= MAX_TRIBUTARIES:
 			break
 		var src: Vector2i = c["src"]
 		var key := "%d,%d" % [src.x, src.y]
 		if used_src.has(key):
 			continue
-		var outlet := str(c["outlet"])
-		if outlet == "lake" and lake_rivers >= 1:
+		var joined := _try_join_tributary(c["pts"] as PackedVector2Array, main_pts)
+		if joined.is_empty():
 			continue
-		var pts: PackedVector2Array = c["pts"]
+		# Skip near-duplicates of already accepted courses
 		var dup := false
 		for prev in picked:
 			var other: PackedVector2Array = prev
-			if _polyline_min_dist(pts, other[other.size() / 2]) < 6.0 \
-					and _polyline_min_dist(other, pts[pts.size() / 2]) < 6.0:
+			if _polyline_min_dist(joined, other[mini(other.size() / 3, other.size() - 1)]) < 4.5 \
+					and _polyline_min_dist(other, joined[mini(joined.size() / 3, joined.size() - 1)]) < 4.5:
 				dup = true
 				break
 		if dup:
 			continue
 		used_src[key] = true
-		if outlet == "lake":
-			lake_rivers += 1
-		picked.append(pts)
+		picked.append(joined)
+		tributes += 1
+	# Optional single lake feeder that reaches the lake on its own (not a second sea canal)
+	if tributes < MAX_TRIBUTARIES:
+		for c in candidates:
+			if str(c["outlet"]) != "lake":
+				continue
+			var src2: Vector2i = c["src"]
+			var key2 := "%d,%d" % [src2.x, src2.y]
+			if used_src.has(key2):
+				continue
+			var pts: PackedVector2Array = c["pts"]
+			var too_close := false
+			for prev2 in picked:
+				if _polyline_min_dist(pts, (prev2 as PackedVector2Array)[(prev2 as PackedVector2Array).size() / 2]) < 7.0:
+					too_close = true
+					break
+			if too_close:
+				continue
+			picked.append(pts)
+			break
 	return picked
 
 
@@ -627,7 +760,7 @@ static func _trace_lake_outlet(
 	var visited: Dictionary = {}
 	var cur := start
 	var reached := false
-	for _step in 100:
+	for _step in maxi(150, grid * 2):
 		if visited.has(cur):
 			break
 		visited[cur] = true
@@ -674,10 +807,17 @@ static func _trace_lake_outlet(
 	if not reached or path.size() < 8:
 		return PackedVector2Array()
 	var pts := PackedVector2Array()
+	# Anchor the outlet slightly inside the lake rim so the spillway blends cleanly.
+	var first_w := MapHeightfield._cell_world(path[0].x, path[0].y, grid, size)
+	var away := (first_w - center).normalized()
+	if away.length_squared() < 1e-6:
+		away = sea_dir
+	var r_lake := float(lake["radius"])
+	pts.append(center + away * maxf(r_lake * 0.82, r_lake - 2.2))
 	for cell in path:
 		pts.append(MapHeightfield._cell_world(cell.x, cell.y, grid, size))
-	pts = _sine_meander_path(pts, size, sea_edge, rng)
-	pts = MapLakes._push_polyline_from_lakes(pts, [lake], MapTypes.LAKE_RIVER_GAP, 0.0, 0.08)
+	pts = _meander_path(pts, heights, grid, size, rng)
+	pts = MapLakes._push_polyline_from_lakes(pts, [lake], MapTypes.LAKE_RIVER_GAP * 0.75, 0.16, 0.08)
 	pts = _snap_mouth_into_water(pts, "sea", [lake], sea_edge, size)
 	if not _river_reaches_outlet(pts, "sea", [lake], sea_edge, size):
 		pts = _hard_guarantee_mouth(pts, "sea", [lake], sea_edge, size)
@@ -728,16 +868,47 @@ static func _resample_arc(pts: PackedVector2Array, spacing: float) -> PackedVect
 	return out
 
 
-static func _sine_meander_path(
-	raw: PackedVector2Array, size: float, sea_edge: int, rng: RandomNumberGenerator
+static func _sample_grid_h(heights: PackedFloat32Array, grid: int, size: float, p: Vector2) -> float:
+	var half := size * 0.5
+	var u := clampf((p.x + half) / size, 0.0, 1.0)
+	var v := clampf((p.y + half) / size, 0.0, 1.0)
+	var ix := clampi(int(round(u * float(grid - 1))), 0, grid - 1)
+	var iz := clampi(int(round(v * float(grid - 1))), 0, grid - 1)
+	return heights[MapHeightfield._i(grid, ix, iz)]
+
+
+static func _remove_loops(pts: PackedVector2Array, radius: float = 4.2) -> PackedVector2Array:
+	## Snip self-coils so a river never winds in circles through a flat depression.
+	if pts.size() < 8:
+		return pts
+	var out := PackedVector2Array()
+	var i := 0
+	while i < pts.size():
+		out.append(pts[i])
+		var jump := -1
+		var start_j := i + 6
+		if start_j < pts.size():
+			for j in range(pts.size() - 1, start_j - 1, -1):
+				if pts[i].distance_to(pts[j]) <= radius:
+					jump = j
+					break
+		if jump > i:
+			i = jump + 1
+		else:
+			i += 1
+	return out
+
+
+static func _meander_path(
+	raw: PackedVector2Array, heights: PackedFloat32Array, grid: int, size: float, rng: RandomNumberGenerator
 ) -> PackedVector2Array:
-	## Gentle sine meander along a sparsified downhill backbone.
-	## Keep amplitude << wavelength so the path never folds into a starburst.
-	if raw.size() < 3:
-		return _sanitize_polyline(raw)
-	var backbone := _sparsify_path(raw, 4.0)
+	## Organic multi-octave noise meander: broad curves on gentler valleys, tighter in gullies.
+	var clean_raw := _remove_loops(raw, 4.2)
+	if clean_raw.size() < 3:
+		return _sanitize_polyline(clean_raw)
+	var backbone := _sparsify_path(clean_raw, 2.0)
 	backbone = _smooth_polyline(backbone, 2)
-	backbone = _resample_arc(backbone, 1.6)
+	backbone = _resample_arc(backbone, 1.0)
 	if backbone.size() < 4:
 		return _sanitize_polyline(backbone)
 
@@ -747,35 +918,47 @@ static func _sine_meander_path(
 	for i in range(1, backbone.size()):
 		cum[i] = cum[i - 1] + backbone[i].distance_to(backbone[i - 1])
 	var total := cum[cum.size() - 1]
-	if total < 10.0:
+	if total < 8.0:
 		return _sanitize_polyline(backbone)
 
-	var phase1 := rng.randf() * TAU
-	var phase2 := rng.randf() * TAU
-	# Long wavelength + modest amp → readable small stream, not shards
-	var wave1 := lerpf(22.0, 36.0, rng.randf())
-	var wave2 := wave1 * 0.55
-	# Modest amp + long wavelength → readable meander without tight S folds that stack ribbon quads
-	var max_amp := mini(2.2, total * 0.045)
+	var mn := FastNoiseLite.new()
+	mn.seed = rng.randi()
+	mn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	mn.frequency = 0.055
+	mn.fractal_type = FastNoiseLite.FRACTAL_FBM
+	mn.fractal_octaves = 3
+	mn.fractal_gain = 0.45
+
+	var amp_mul := lerpf(2.4, 3.6, rng.randf())
 	var out := PackedVector2Array()
 	out.append(backbone[0])
+	var margin := size * 0.5 - 1.5
 	for i in range(1, backbone.size() - 1):
 		var s := cum[i]
 		var along := s / total
-		var sea_p := MapHeightfield._sea_proximity(backbone[i].x, backbone[i].y, size, sea_edge)
-		var amp := lerpf(0.20, max_amp, pow(along, 0.7)) * lerpf(0.7, 1.0, sea_p)
-		amp *= 1.0 - smoothstep(0.85, 1.0, along) * 0.8
+		var half_w := river_half_width(along)
 		var tang: Vector2 = (backbone[i + 1] - backbone[i - 1]).normalized()
 		if tang.length_squared() < 1e-6:
 			out.append(backbone[i])
 			continue
 		var perp := Vector2(-tang.y, tang.x)
-		var bend := sin(s * TAU / wave1 + phase1) * 0.78 + sin(s * TAU / wave2 + phase2) * 0.22
-		out.append(backbone[i] + perp * (bend * amp))
+		# Gentle valley bends are wider; steep canyon gullies stay tighter
+		var h_prev := _sample_grid_h(heights, grid, size, backbone[i - 1])
+		var h_next := _sample_grid_h(heights, grid, size, backbone[i + 1])
+		var seg_d := maxf(backbone[i - 1].distance_to(backbone[i + 1]), 0.5)
+		var slope := absf(h_prev - h_next) / seg_d
+		var flat_fac := lerpf(0.60, 1.15, 1.0 - smoothstep(0.04, 0.30, slope))
+		var end_taper := smoothstep(0.04, 0.20, along) * (1.0 - smoothstep(0.88, 1.0, along) * 0.60)
+		var amp := minf(half_w * amp_mul * flat_fac * end_taper, 4.2)
+		var bend := mn.get_noise_2d(s, 0.0) * 1.45
+		var p_new := backbone[i] + perp * (bend * amp)
+		p_new.x = clampf(p_new.x, -margin, margin)
+		p_new.y = clampf(p_new.y, -margin, margin)
+		out.append(p_new)
 	out.append(backbone[backbone.size() - 1])
 
 	out = _smooth_polyline(out, 2)
-	out = _resample_arc(out, 1.15)
+	out = _resample_arc(out, 0.85)
 	return _sanitize_polyline(out)
 
 
@@ -794,8 +977,8 @@ static func _sanitize_polyline(pts: PackedVector2Array) -> PackedVector2Array:
 		if sl < 0.18:
 			continue # too tight — skip
 		var dir := step / sl
-		if prev_dir != Vector2.ZERO and dir.dot(prev_dir) < 0.05:
-			# Hard reverse / spike — skip this point
+		if prev_dir != Vector2.ZERO and dir.dot(prev_dir) < -0.65:
+			# Hard reversal / spike — skip this point
 			continue
 		out.append(p)
 		prev_dir = dir
@@ -804,9 +987,8 @@ static func _sanitize_polyline(pts: PackedVector2Array) -> PackedVector2Array:
 	if out.size() < 2:
 		return pts
 	if out[out.size() - 1].distance_to(end) > 0.5:
-		# Only append end if it continues forward
 		var d2 := (end - out[out.size() - 1]).normalized()
-		if prev_dir == Vector2.ZERO or d2.dot(prev_dir) > 0.0:
+		if prev_dir == Vector2.ZERO or d2.dot(prev_dir) > -0.65:
 			out.append(end)
 	return out if out.size() >= 2 else pts
 
@@ -928,9 +1110,17 @@ static func _carve_rivers(
 		return heights
 	var out := heights.duplicate()
 	var mouths: Array[float] = []
+	var bounds: Array[Rect2] = []
+	var max_valley := MapTypes.RIVER_HALF_W_MOUTH * 4.2
 	for river in rivers:
 		var pts: PackedVector2Array = river
 		mouths.append(MapLakes._mouth_water_y(pts[pts.size() - 1], biomes, grid, size, water_y, lakes))
+		var rmin := Vector2(INF, INF)
+		var rmax := Vector2(-INF, -INF)
+		for rp in pts:
+			rmin = rmin.min(rp)
+			rmax = rmax.max(rp)
+		bounds.append(Rect2(rmin - Vector2(max_valley, max_valley), (rmax - rmin) + Vector2(max_valley * 2.0, max_valley * 2.0)))
 
 	for z in grid:
 		for x in grid:
@@ -943,6 +1133,8 @@ static func _carve_rivers(
 			var along := 0.0
 			var mouth_y := water_y
 			for ri in rivers.size():
+				if not bounds[ri].has_point(p):
+					continue
 				var pts: PackedVector2Array = rivers[ri]
 				var d := _dist_to_polyline(p, pts)
 				if d < d_min:
@@ -951,17 +1143,20 @@ static func _carve_rivers(
 					mouth_y = mouths[ri]
 			var half_w := river_half_width(along)
 			var bank := half_w * MapTypes.RIVER_BANK_MUL
-			if d_min > bank:
+			var valley := half_w * 4.8
+			if d_min > valley:
 				continue
+			# U-shaped channel inside `bank`, fading smoothly into a wide rolling valley shoulder
 			var bed_w := smoothstep(bank, half_w * 0.15, d_min)
-			var deepen := river_depth(along) * clampf(relief, 0.75, 1.45) * bed_w
+			var shoulder_w := smoothstep(valley, bank * 0.72, d_min) * 0.52
+			var deepen := river_depth(along) * clampf(relief, 0.75, 1.45) * maxf(bed_w, shoulder_w)
 			out[i] -= deepen
-			# Carve a trench wider than the water ribbon so banks never cover the mesh
 			if d_min < half_w * 1.15:
 				biomes[i] = MapTypes.Biome.RIVER
-				if along > 0.85:
-					out[i] = minf(out[i], mouth_y - 0.12)
-			elif d_min < bank and int(biomes[i]) != MapTypes.Biome.RIVER:
-				if along > 0.45:
+				if along > 0.78:
+					var mouth_cut := lerpf(0.26, 0.58, smoothstep(0.78, 1.0, along))
+					out[i] = minf(out[i], mouth_y - mouth_cut)
+			elif d_min < bank * 0.88 and int(biomes[i]) != MapTypes.Biome.RIVER:
+				if along > 0.35 and int(biomes[i]) != MapTypes.Biome.MOUNTAIN:
 					biomes[i] = MapTypes.Biome.SAND
 	return out

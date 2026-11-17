@@ -1,288 +1,170 @@
 extends CharacterBody3D
-## Natural 8-direction walk/run/wade — Quaternius Idle/Walk/Run + footstep taps.
+## Player coordinator: reads input, steps CharacterActionController & CharacterLocomotion,
+## and drives Visual / Audio / Headlight.
 
-const WALK_SPEED := 3.2
-const RUN_SPEED := 6.4
-const ACCEL := 16.0
-const DECEL := 20.0
-const TURN_SPEED := 12.0
-const MODEL_SCALE := 0.30
-const FEET_OFFSET := 0.02
-const MapGen = preload("res://scripts/map_generator.gd")
-const ANIMATED_PATH := "res://assets/models/quaternius/AnimatedHuman.fbx"
-const WALKER_PATH := "res://assets/models/walker.glb"
-const SETTLER_PATH := "res://assets/models/settler.glb"
-
-## Seconds between footfalls (one foot). Run is quicker da-da.
-const WALK_STEP_INTERVAL := 0.42
-const RUN_STEP_INTERVAL := 0.26
+const ACTION_BINDINGS := {
+	"action_gather": &"gather",
+	"action_mine": &"mine",
+	"action_chop": &"chop",
+	"action_build": &"build",
+}
 
 @onready var _visual_root: Node3D = $VisualRoot
 @onready var _label: Label3D = $NameLabel
 @onready var _feet: AudioStreamPlayer3D = $Footsteps
 
-const WATER_NEAR := 14.0
-const WATER_FULL := 2.2
-const WATER_VOL_DB := -22.0 ## quiet brook; footsteps stay louder
-
-var _anim: AnimationPlayer = null
-var _clip_idle: String = ""
-var _clip_walk: String = ""
-var _clip_run: String = ""
-var _using_rig: bool = false
-var _bob_t: float = 0.0
-var _facing_yaw: float = 0.0
-var _current_clip: String = ""
-var _step_timer: float = 0.0
-var _walk_streams: Array[AudioStream] = []
-var _run_streams: Array[AudioStream] = []
-var _rng := RandomNumberGenerator.new()
-## Height follower — set by main. Guarantees all terrain is reachable.
+## External context — injected by main (keeps public vars for backwards compatibility).
 var terrain: Node = null
-## Sky/time node — set by main for night headlamp.
 var sky_time: Node = null
-## Shift toggles run/walk (no need to hold).
+
 var _run_mode: bool = false
-var _head_light: OmniLight3D = null
-var _water_amb: AudioStreamPlayer = null
-var _water_vol: float = 0.0
+var _locomotion := CharacterLocomotion.new()
+var _actions := CharacterActionController.new()
+var _visual: CharacterVisual
+var _audio: CharacterAudio
+var _head_light: NightHeadlight
+var _interactor: Interactor
 
 
 func _ready() -> void:
-	_rng.randomize()
 	_ensure_input_map()
-	_load_footsteps()
-	_setup_water_ambience()
-	_load_model()
-	_setup_head_light()
-	_label.text = "WASD · Shift toggle run"
-	# Don't collide with terrain mesh; we snap to heightfield instead.
 	collision_mask = 0
 	collision_layer = 0
 
+	_visual = CharacterVisual.new()
+	_visual.name = "VisualController"
+	add_child(_visual)
+	_visual.setup(_visual_root)
 
-func _setup_head_light() -> void:
-	## Soft lamp above the head — auto-on at night so the scene stays readable.
-	_head_light = OmniLight3D.new()
-	_head_light.name = "HeadLight"
-	_head_light.light_color = Color(1.0, 0.92, 0.78)
-	_head_light.light_energy = 0.0
-	_head_light.omni_range = 12.0
-	_head_light.omni_attenuation = 1.4
-	_head_light.shadow_enabled = false
-	_head_light.position = Vector3(0.0, 1.85, 0.12) ## above head, slight forward
+	_audio = CharacterAudio.new()
+	_audio.name = "AudioController"
+	add_child(_audio)
+	_audio.setup(_feet)
+
+	_head_light = NightHeadlight.new()
 	add_child(_head_light)
+
+	_interactor = get_node_or_null("Interactor") as Interactor
+	if _interactor == null:
+		_interactor = Interactor.new()
+		_interactor.name = "Interactor"
+		_interactor.position = Vector3(0.0, 0.75, 0.0)
+		add_child(_interactor)
+	_interactor.set_actor(self)
+
+	_actions.action_beat.connect(_on_action_beat)
+	_label.text = _visual.model_status_text
+
+
+func set_context(p_terrain: Node, p_sky_time: Node) -> void:
+	terrain = p_terrain
+	sky_time = p_sky_time
+
+
+func get_interactor() -> Interactor:
+	return _interactor
+
+
+func get_locomotion() -> CharacterLocomotion:
+	return _locomotion
+
+
+func get_action_controller() -> CharacterActionController:
+	return _actions
+
+
+func perform_action(action_id: StringName, context: Dictionary = {}) -> bool:
+	var ctx := context.duplicate()
+	if not ctx.has("origin_pos"):
+		ctx["origin_pos"] = global_position
+	return _actions.try_start(action_id, _locomotion, ctx)
+
+
+func cancel_action(reason: StringName = &"manual") -> void:
+	_actions.cancel(reason)
+
+
+func get_run_mode() -> bool:
+	return _run_mode
+
+
+func set_run_mode(enabled: bool) -> void:
+	_run_mode = enabled
+
+
+func get_facing_yaw() -> float:
+	return _locomotion.facing_yaw
+
+
+func set_facing_yaw(yaw: float) -> void:
+	_locomotion.facing_yaw = yaw
 
 
 func _physics_process(delta: float) -> void:
-	if Input.is_action_just_pressed("sprint"):
+	var allow_input := _is_gameplay_input_allowed()
+	if allow_input and Input.is_action_just_pressed("sprint"):
 		_run_mode = not _run_mode
 
-	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	var wish := Vector3(input_dir.x, 0.0, input_dir.y)
-	var moving := wish.length_squared() > 0.0001
+	var input_dir := Vector2.ZERO
+	if allow_input:
+		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		_process_action_inputs()
 
-	# Deep sea/lake only lifts the body so the head stays out. Rivers stay a walk on the bed.
-	# Never switch to a swim pose — this rig has no swim clip.
-	var probe := global_position + Vector3(velocity.x, 0.0, velocity.z) * delta
-	var surface := _water_surface_y(probe.x, probe.z)
-	var ground := _ground_y(probe.x, probe.z)
-	var biome := _biome_at(probe.x, probe.z)
-	var deep_open := surface > -1000.0 and (surface - ground) > 1.05 \
-			and (biome == MapGen.Biome.SEA or biome == MapGen.Biome.LAKE)
+	var hold_active := allow_input and _is_any_action_held()
+	var action_frame := _actions.step(delta, _locomotion, input_dir, hold_active)
+	var move_scale := float(action_frame.get("move_scale", 1.0))
+	var facing_override := float(action_frame.get("facing_override_yaw", 0.0)) if bool(action_frame.get("has_facing_override", false)) else NAN
 
-	var want_fast := moving and _run_mode
-	var speed := RUN_SPEED if want_fast else WALK_SPEED
-	var accel := ACCEL
-	var decel := DECEL
-	if deep_open:
-		speed *= 0.72
-	_label.text = "RUN" if _run_mode else "WALK"
+	var result := _locomotion.step(global_position, velocity, input_dir, _run_mode, terrain, delta, move_scale, facing_override)
+	velocity = result["velocity"] as Vector3
+	global_position = result["position"] as Vector3
 
-	if moving:
-		wish = wish.normalized()
-		var target_vel := wish * speed
-		velocity.x = move_toward(velocity.x, target_vel.x, accel * delta)
-		velocity.z = move_toward(velocity.z, target_vel.z, accel * delta)
-		var target_yaw := atan2(wish.x, wish.z)
-		_facing_yaw = lerp_angle(_facing_yaw, target_yaw, 1.0 - exp(-TURN_SPEED * delta))
-		_visual_root.rotation.y = _facing_yaw
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, decel * delta)
-		velocity.z = move_toward(velocity.z, 0.0, decel * delta)
+	var action_label := str(action_frame.get("state_label", ""))
+	_label.text = action_label if action_label != "" else _locomotion.state_label
 
-	velocity.y = 0.0
-	var next := global_position + Vector3(velocity.x, 0.0, velocity.z) * delta
-	var bed := _ground_y(next.x, next.z)
-	next.y = bed + FEET_OFFSET
-	if deep_open:
-		var surf := _water_surface_y(next.x, next.z)
-		if surf > -1000.0:
-			# Chest-deep stand in open water, same walk cycle — not a swim pose
-			next.y = maxf(next.y, surf - 1.05)
-	global_position = next
+	var snow_cover := 0.0
+	if sky_time != null and sky_time.has_method("get_weather_params"):
+		var wp: Dictionary = sky_time.call("get_weather_params") as Dictionary
+		snow_cover = float(wp.get("snow_cover", 0.0))
 
-	var speed_xz := Vector2(velocity.x, velocity.z).length()
-	var running := want_fast and speed_xz > WALK_SPEED * 0.55
-	_update_anim(speed_xz, running, delta)
-	_update_footsteps(speed_xz, running, delta)
-	_update_head_light(delta)
-	_update_water_ambience(delta)
+	_visual.update_visual(_locomotion, delta, action_frame)
+	_audio.update_audio(_locomotion, terrain, global_position, delta, snow_cover)
+	_head_light.update_from_sky(sky_time, delta)
 
 
-func _update_head_light(delta: float) -> void:
-	if _head_light == null:
+func _process_action_inputs() -> void:
+	if Input.is_action_just_pressed("action_cancel"):
+		_actions.cancel(&"input_cancel")
 		return
-	var night := 0.0
-	if sky_time != null and sky_time.has_method("get_night_factor"):
-		night = float(sky_time.call("get_night_factor"))
-	# Fade in after dusk; stay gently lit so night is never too dark
-	var target := 0.0
-	if night > 0.35:
-		target = lerpf(0.0, 2.4, smoothstep(0.35, 0.85, night))
-	_head_light.light_energy = move_toward(_head_light.light_energy, target, 4.0 * delta)
-	_head_light.visible = _head_light.light_energy > 0.02
+	for input_name: String in ACTION_BINDINGS.keys():
+		if Input.is_action_just_pressed(input_name):
+			perform_action(ACTION_BINDINGS[input_name] as StringName)
+			return
+	if Input.is_action_just_pressed("action_repeat"):
+		perform_action(_actions.last_used_id)
 
 
-func _ground_y(x: float, z: float) -> float:
-	if terrain != null and terrain.has_method("sample_height"):
-		return float(terrain.call("sample_height", x, z))
-	return 0.0
+func _is_any_action_held() -> bool:
+	if Input.is_action_pressed("action_repeat"):
+		return true
+	for input_name: String in ACTION_BINDINGS.keys():
+		if Input.is_action_pressed(input_name):
+			return true
+	return false
 
 
-func _water_surface_y(x: float, z: float) -> float:
-	if terrain != null and terrain.has_method("sample_water_surface"):
-		return float(terrain.call("sample_water_surface", x, z))
-	return -INF
+func _on_action_beat(action_id: StringName, _beat_index: int, _cycle_count: int) -> void:
+	if _visual != null:
+		_visual.trigger_action_beat(action_id)
+	if _audio != null:
+		_audio.play_action_beat(action_id)
 
 
-func _biome_at(x: float, z: float) -> int:
-	if terrain != null and terrain.has_method("sample_biome"):
-		return int(terrain.call("sample_biome", x, z))
-	return -1
-
-
-func _update_anim(speed_xz: float, running: bool, delta: float) -> void:
-	var moving := speed_xz > 0.25
-	if _using_rig and _anim != null:
-		if moving:
-			if running and _clip_run != "":
-				_play_clip(_clip_run)
-				_anim.speed_scale = clampf(speed_xz / RUN_SPEED, 0.85, 1.2)
-			else:
-				_play_clip(_clip_walk if _clip_walk != "" else _clip_run)
-				_anim.speed_scale = clampf(speed_xz / WALK_SPEED, 0.75, 1.25)
-		else:
-			_play_clip(_clip_idle)
-			_anim.speed_scale = 1.0
-		_visual_root.position = _visual_root.position.lerp(Vector3.ZERO, 1.0 - exp(-8.0 * delta))
-		_visual_root.rotation.x = move_toward(_visual_root.rotation.x, 0.0, delta * 8.0)
-		_visual_root.rotation.z = move_toward(_visual_root.rotation.z, 0.0, delta * 8.0)
-		return
-
-	if moving:
-		var bob_rate := 14.0 if running else 8.0
-		var bob_amp := 0.06 if running else 0.045
-		_bob_t += delta * (bob_rate + speed_xz * 1.5)
-		_visual_root.position.y = absf(sin(_bob_t)) * bob_amp
-		_visual_root.rotation.z = sin(_bob_t * 0.5) * 0.05
-		_visual_root.rotation.x = sin(_bob_t) * 0.035
-	else:
-		_bob_t = 0.0
-		_visual_root.position.y = move_toward(_visual_root.position.y, 0.0, delta * 2.0)
-		_visual_root.rotation.x = move_toward(_visual_root.rotation.x, 0.0, delta * 4.0)
-		_visual_root.rotation.z = move_toward(_visual_root.rotation.z, 0.0, delta * 4.0)
-
-
-func _update_footsteps(speed_xz: float, running: bool, delta: float) -> void:
-	if speed_xz < 0.4:
-		_step_timer = 0.0
-		return
-	var interval := RUN_STEP_INTERVAL if running else WALK_STEP_INTERVAL
-	# Scale interval slightly with actual speed so slow walk is less busy
-	interval *= clampf((RUN_SPEED if running else WALK_SPEED) / maxf(speed_xz, 0.1), 0.75, 1.35)
-	_step_timer -= delta
-	if _step_timer > 0.0:
-		return
-	_step_timer = interval
-	_play_footstep(running)
-
-
-func _play_footstep(running: bool) -> void:
-	if _feet == null:
-		return
-	var pool := _run_streams if running and not _run_streams.is_empty() else _walk_streams
-	if pool.is_empty():
-		return
-	_feet.stream = pool[_rng.randi_range(0, pool.size() - 1)]
-	_feet.pitch_scale = _rng.randf_range(0.92, 1.08)
-	_feet.volume_db = (-8.0 if running else -12.0) + _rng.randf_range(-1.0, 1.0)
-	_feet.play()
-
-
-func _load_footsteps() -> void:
-	_walk_streams.clear()
-	_run_streams.clear()
-	for i in 4:
-		var wpath := "res://assets/sfx/foot_walk_%d.wav" % i
-		var rpath := "res://assets/sfx/foot_run_%d.wav" % i
-		if ResourceLoader.exists(wpath):
-			_walk_streams.append(load(wpath) as AudioStream)
-		if ResourceLoader.exists(rpath):
-			_run_streams.append(load(rpath) as AudioStream)
-	if _feet != null:
-		_feet.bus = &"Master"
-		_feet.max_distance = 28.0
-		_feet.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
-
-
-func _setup_water_ambience() -> void:
-	_water_amb = AudioStreamPlayer.new()
-	_water_amb.name = "WaterAmbience"
-	_water_amb.bus = &"Master"
-	_water_amb.volume_db = -80.0
-	add_child(_water_amb)
-	var path := "res://assets/sfx/water_flow_loop.wav"
-	if not ResourceLoader.exists(path):
-		return
-	var stream := load(path) as AudioStream
-	if stream == null:
-		return
-	if stream is AudioStreamWAV:
-		var wav := stream as AudioStreamWAV
-		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	_water_amb.stream = stream
-	_water_amb.play()
-
-
-func _update_water_ambience(delta: float) -> void:
-	if _water_amb == null or _water_amb.stream == null:
-		return
-	var target := 0.0
-	if terrain != null and terrain.has_method("nearest_water_distance"):
-		var d: float = float(terrain.call("nearest_water_distance", global_position.x, global_position.z))
-		if d < WATER_NEAR:
-			target = 1.0 - smoothstep(WATER_FULL, WATER_NEAR, d)
-			if terrain.has_method("biome_name_at") \
-					and str(terrain.call("biome_name_at", global_position.x, global_position.z)) == "River":
-				target = minf(1.0, target * 1.15)
-	_water_vol = move_toward(_water_vol, target, delta * 1.8)
-	if _water_vol < 0.01:
-		_water_amb.volume_db = -80.0
-		return
-	# Quiet presence — only a little water sound when close
-	_water_amb.volume_db = lerpf(-52.0, WATER_VOL_DB, pow(_water_vol, 0.85))
-	if not _water_amb.playing:
-		_water_amb.play()
-
-
-func _play_clip(clip: String) -> void:
-	if _anim == null or clip == "" or clip == _current_clip:
-		return
-	if not _anim.has_animation(clip):
-		return
-	_anim.play(clip)
-	_current_clip = clip
+func _is_gameplay_input_allowed() -> bool:
+	var router := get_node_or_null("/root/InputRouter")
+	if router != null and router.has_method("is_gameplay_active"):
+		return bool(router.call("is_gameplay_active"))
+	return true
 
 
 func _ensure_input_map() -> void:
@@ -291,6 +173,12 @@ func _ensure_input_map() -> void:
 	_bind("move_forward", [KEY_W, KEY_UP])
 	_bind("move_back", [KEY_S, KEY_DOWN])
 	_bind("sprint", [KEY_SHIFT])
+	_bind("action_gather", [KEY_1])
+	_bind("action_mine", [KEY_2])
+	_bind("action_chop", [KEY_3])
+	_bind("action_build", [KEY_4])
+	_bind("action_repeat", [KEY_F])
+	_bind("action_cancel", [KEY_X])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -301,120 +189,3 @@ func _bind(action: String, keys: Array) -> void:
 		ev.physical_keycode = key
 		if not InputMap.action_has_event(action, ev):
 			InputMap.action_add_event(action, ev)
-
-
-func _load_model() -> void:
-	for child in _visual_root.get_children():
-		child.queue_free()
-	_anim = null
-	_using_rig = false
-	_clip_idle = ""
-	_clip_walk = ""
-	_clip_run = ""
-	_current_clip = ""
-
-	if ResourceLoader.exists(ANIMATED_PATH):
-		var packed := load(ANIMATED_PATH) as PackedScene
-		if packed != null:
-			var model := packed.instantiate() as Node3D
-			_visual_root.add_child(model)
-			model.scale = Vector3.ONE * MODEL_SCALE
-			_warm_skin(model)
-			_wire_anim(model)
-			if _using_rig:
-				_label.text = "Walk / Run\nWASD + Shift"
-				return
-
-	var fallback: PackedScene = null
-	if ResourceLoader.exists(WALKER_PATH):
-		fallback = load(WALKER_PATH) as PackedScene
-	elif ResourceLoader.exists(SETTLER_PATH):
-		fallback = load(SETTLER_PATH) as PackedScene
-	if fallback != null:
-		var model := fallback.instantiate() as Node3D
-		_visual_root.add_child(model)
-		_label.text = "Static + bob\nWASD + Shift"
-		return
-
-	var mesh_instance := MeshInstance3D.new()
-	var capsule := CapsuleMesh.new()
-	capsule.radius = 0.25
-	capsule.height = 1.2
-	mesh_instance.mesh = capsule
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.85, 0.55, 0.35)
-	mesh_instance.material_override = mat
-	mesh_instance.position.y = 0.6
-	_visual_root.add_child(mesh_instance)
-	_label.text = "Placeholder"
-
-
-func _wire_anim(model: Node3D) -> void:
-	_anim = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	if _anim == null:
-		return
-	_clip_idle = _find_clip("Idle")
-	_clip_walk = _find_clip("Walk")
-	_clip_run = _find_clip("Run")
-	if _clip_idle == "" and _clip_walk == "" and _clip_run == "":
-		_anim = null
-		return
-	for clip in [_clip_idle, _clip_walk, _clip_run]:
-		if clip == "":
-			continue
-		var a: Animation = _anim.get_animation(clip)
-		if a != null:
-			a.loop_mode = Animation.LOOP_LINEAR
-	_using_rig = true
-	_play_clip(_clip_idle if _clip_idle != "" else _clip_walk)
-
-
-func _find_clip(suffix: String) -> String:
-	if _anim == null:
-		return ""
-	for libname in _anim.get_animation_library_list():
-		var lib: AnimationLibrary = _anim.get_animation_library(libname)
-		if lib == null:
-			continue
-		for an in lib.get_animation_list():
-			if String(an).ends_with(suffix):
-				var ln := String(libname)
-				if ln == "" or ln == "default":
-					if _anim.has_animation(String(an)):
-						return String(an)
-					return ln + "/" + String(an) if ln != "" else String(an)
-				var qualified := ln + "/" + String(an)
-				if _anim.has_animation(qualified):
-					return qualified
-				if _anim.has_animation(String(an)):
-					return String(an)
-				return qualified
-	for an in _anim.get_animation_list():
-		if String(an).ends_with(suffix):
-			return String(an)
-	return ""
-
-
-func _warm_skin(target: Node3D) -> void:
-	var stack: Array = [target]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is MeshInstance3D:
-			var mi := n as MeshInstance3D
-			var mesh := mi.mesh
-			if mesh != null:
-				for si in range(mesh.get_surface_count()):
-					var src: Material = mi.get_surface_override_material(si)
-					if src == null:
-						src = mesh.surface_get_material(si)
-					var sm: StandardMaterial3D
-					if src is StandardMaterial3D:
-						sm = (src as StandardMaterial3D).duplicate() as StandardMaterial3D
-					else:
-						sm = StandardMaterial3D.new()
-					sm.albedo_color = Color(0.52, 0.38, 0.28)
-					sm.roughness = 0.92
-					sm.metallic = 0.0
-					mi.set_surface_override_material(si, sm)
-		for ch in n.get_children():
-			stack.append(ch)

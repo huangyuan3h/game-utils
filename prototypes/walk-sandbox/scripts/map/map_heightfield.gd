@@ -60,7 +60,7 @@ static func _smooth(heights: PackedFloat32Array, biomes: PackedByteArray, grid: 
 				var b := int(biomes[i])
 				var blend := 0.55
 				if b == MapTypes.Biome.RIVER:
-					blend = 0.35
+					blend = 0.18
 				elif b == MapTypes.Biome.SEA or b == MapTypes.Biome.LAKE:
 					blend = 0.4
 				next[i] = lerpf(cur[i], avg, blend)
