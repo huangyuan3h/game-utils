@@ -38,13 +38,15 @@ var _zoom: float = 1.0
 
 
 func _ready() -> void:
+	# Bind before any input can fire (await would leave a frame of missing actions).
+	_bind_zoom_keys()
+	_bind_regen()
 	# Wait one frame so TerrainMap._ready has rebuilt heights
 	await get_tree().process_frame
 	_player.terrain = _terrain
+	_player.sky_time = _sky_time
 	_place_player_on_terrain()
 	_spawn_markers()
-	_bind_zoom_keys()
-	_bind_regen()
 	_update_hud()
 
 
@@ -66,7 +68,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_set_zoom(_zoom + ZOOM_STEP)
 			get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("zoom_in"):
+		return
+	if not InputMap.has_action("zoom_in"):
+		return
+	if event.is_action_pressed("zoom_in"):
 		_set_zoom(_zoom - ZOOM_STEP)
 	elif event.is_action_pressed("zoom_out"):
 		_set_zoom(_zoom + ZOOM_STEP)

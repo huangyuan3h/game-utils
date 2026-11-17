@@ -1,5 +1,5 @@
 extends CharacterBody3D
-## Natural 8-direction walk/run — Quaternius Idle/Walk/Run + footstep taps.
+## Natural 8-direction walk/run/wade — Quaternius Idle/Walk/Run + footstep taps.
 
 const WALK_SPEED := 3.2
 const RUN_SPEED := 6.4
@@ -8,6 +8,7 @@ const DECEL := 20.0
 const TURN_SPEED := 12.0
 const MODEL_SCALE := 0.30
 const FEET_OFFSET := 0.02
+const MapGen = preload("res://scripts/map_generator.gd")
 const ANIMATED_PATH := "res://assets/models/quaternius/AnimatedHuman.fbx"
 const WALKER_PATH := "res://assets/models/walker.glb"
 const SETTLER_PATH := "res://assets/models/settler.glb"
@@ -19,6 +20,10 @@ const RUN_STEP_INTERVAL := 0.26
 @onready var _visual_root: Node3D = $VisualRoot
 @onready var _label: Label3D = $NameLabel
 @onready var _feet: AudioStreamPlayer3D = $Footsteps
+
+const WATER_NEAR := 14.0
+const WATER_FULL := 2.2
+const WATER_VOL_DB := -22.0 ## quiet brook; footsteps stay louder
 
 var _anim: AnimationPlayer = null
 var _clip_idle: String = ""
@@ -34,59 +39,127 @@ var _run_streams: Array[AudioStream] = []
 var _rng := RandomNumberGenerator.new()
 ## Height follower — set by main. Guarantees all terrain is reachable.
 var terrain: Node = null
+## Sky/time node — set by main for night headlamp.
+var sky_time: Node = null
 ## Shift toggles run/walk (no need to hold).
 var _run_mode: bool = false
+var _head_light: OmniLight3D = null
+var _water_amb: AudioStreamPlayer = null
+var _water_vol: float = 0.0
 
 
 func _ready() -> void:
 	_rng.randomize()
 	_ensure_input_map()
 	_load_footsteps()
+	_setup_water_ambience()
 	_load_model()
+	_setup_head_light()
 	_label.text = "WASD · Shift toggle run"
 	# Don't collide with terrain mesh; we snap to heightfield instead.
 	collision_mask = 0
 	collision_layer = 0
 
 
+func _setup_head_light() -> void:
+	## Soft lamp above the head — auto-on at night so the scene stays readable.
+	_head_light = OmniLight3D.new()
+	_head_light.name = "HeadLight"
+	_head_light.light_color = Color(1.0, 0.92, 0.78)
+	_head_light.light_energy = 0.0
+	_head_light.omni_range = 12.0
+	_head_light.omni_attenuation = 1.4
+	_head_light.shadow_enabled = false
+	_head_light.position = Vector3(0.0, 1.85, 0.12) ## above head, slight forward
+	add_child(_head_light)
+
+
 func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("sprint"):
 		_run_mode = not _run_mode
-		_label.text = "RUN" if _run_mode else "WALK"
 
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var wish := Vector3(input_dir.x, 0.0, input_dir.y)
 	var moving := wish.length_squared() > 0.0001
-	var want_run := moving and _run_mode
-	var speed := RUN_SPEED if want_run else WALK_SPEED
+
+	# Deep sea/lake only lifts the body so the head stays out. Rivers stay a walk on the bed.
+	# Never switch to a swim pose — this rig has no swim clip.
+	var probe := global_position + Vector3(velocity.x, 0.0, velocity.z) * delta
+	var surface := _water_surface_y(probe.x, probe.z)
+	var ground := _ground_y(probe.x, probe.z)
+	var biome := _biome_at(probe.x, probe.z)
+	var deep_open := surface > -1000.0 and (surface - ground) > 1.05 \
+			and (biome == MapGen.Biome.SEA or biome == MapGen.Biome.LAKE)
+
+	var want_fast := moving and _run_mode
+	var speed := RUN_SPEED if want_fast else WALK_SPEED
+	var accel := ACCEL
+	var decel := DECEL
+	if deep_open:
+		speed *= 0.72
+	_label.text = "RUN" if _run_mode else "WALK"
 
 	if moving:
 		wish = wish.normalized()
 		var target_vel := wish * speed
-		velocity.x = move_toward(velocity.x, target_vel.x, ACCEL * delta)
-		velocity.z = move_toward(velocity.z, target_vel.z, ACCEL * delta)
+		velocity.x = move_toward(velocity.x, target_vel.x, accel * delta)
+		velocity.z = move_toward(velocity.z, target_vel.z, accel * delta)
 		var target_yaw := atan2(wish.x, wish.z)
 		_facing_yaw = lerp_angle(_facing_yaw, target_yaw, 1.0 - exp(-TURN_SPEED * delta))
 		_visual_root.rotation.y = _facing_yaw
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, DECEL * delta)
-		velocity.z = move_toward(velocity.z, 0.0, DECEL * delta)
+		velocity.x = move_toward(velocity.x, 0.0, decel * delta)
+		velocity.z = move_toward(velocity.z, 0.0, decel * delta)
 
 	velocity.y = 0.0
 	var next := global_position + Vector3(velocity.x, 0.0, velocity.z) * delta
-	next.y = _ground_y(next.x, next.z) + FEET_OFFSET
+	var bed := _ground_y(next.x, next.z)
+	next.y = bed + FEET_OFFSET
+	if deep_open:
+		var surf := _water_surface_y(next.x, next.z)
+		if surf > -1000.0:
+			# Chest-deep stand in open water, same walk cycle — not a swim pose
+			next.y = maxf(next.y, surf - 1.05)
 	global_position = next
 
 	var speed_xz := Vector2(velocity.x, velocity.z).length()
-	var running := want_run and speed_xz > WALK_SPEED * 0.85
+	var running := want_fast and speed_xz > WALK_SPEED * 0.55
 	_update_anim(speed_xz, running, delta)
 	_update_footsteps(speed_xz, running, delta)
+	_update_head_light(delta)
+	_update_water_ambience(delta)
+
+
+func _update_head_light(delta: float) -> void:
+	if _head_light == null:
+		return
+	var night := 0.0
+	if sky_time != null and sky_time.has_method("get_night_factor"):
+		night = float(sky_time.call("get_night_factor"))
+	# Fade in after dusk; stay gently lit so night is never too dark
+	var target := 0.0
+	if night > 0.35:
+		target = lerpf(0.0, 2.4, smoothstep(0.35, 0.85, night))
+	_head_light.light_energy = move_toward(_head_light.light_energy, target, 4.0 * delta)
+	_head_light.visible = _head_light.light_energy > 0.02
 
 
 func _ground_y(x: float, z: float) -> float:
 	if terrain != null and terrain.has_method("sample_height"):
 		return float(terrain.call("sample_height", x, z))
 	return 0.0
+
+
+func _water_surface_y(x: float, z: float) -> float:
+	if terrain != null and terrain.has_method("sample_water_surface"):
+		return float(terrain.call("sample_water_surface", x, z))
+	return -INF
+
+
+func _biome_at(x: float, z: float) -> int:
+	if terrain != null and terrain.has_method("sample_biome"):
+		return int(terrain.call("sample_biome", x, z))
+	return -1
 
 
 func _update_anim(speed_xz: float, running: bool, delta: float) -> void:
@@ -102,7 +175,9 @@ func _update_anim(speed_xz: float, running: bool, delta: float) -> void:
 		else:
 			_play_clip(_clip_idle)
 			_anim.speed_scale = 1.0
-		_visual_root.position.y = 0.0
+		_visual_root.position = _visual_root.position.lerp(Vector3.ZERO, 1.0 - exp(-8.0 * delta))
+		_visual_root.rotation.x = move_toward(_visual_root.rotation.x, 0.0, delta * 8.0)
+		_visual_root.rotation.z = move_toward(_visual_root.rotation.z, 0.0, delta * 8.0)
 		return
 
 	if moving:
@@ -159,6 +234,46 @@ func _load_footsteps() -> void:
 		_feet.bus = &"Master"
 		_feet.max_distance = 28.0
 		_feet.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+
+
+func _setup_water_ambience() -> void:
+	_water_amb = AudioStreamPlayer.new()
+	_water_amb.name = "WaterAmbience"
+	_water_amb.bus = &"Master"
+	_water_amb.volume_db = -80.0
+	add_child(_water_amb)
+	var path := "res://assets/sfx/water_flow_loop.wav"
+	if not ResourceLoader.exists(path):
+		return
+	var stream := load(path) as AudioStream
+	if stream == null:
+		return
+	if stream is AudioStreamWAV:
+		var wav := stream as AudioStreamWAV
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	_water_amb.stream = stream
+	_water_amb.play()
+
+
+func _update_water_ambience(delta: float) -> void:
+	if _water_amb == null or _water_amb.stream == null:
+		return
+	var target := 0.0
+	if terrain != null and terrain.has_method("nearest_water_distance"):
+		var d: float = float(terrain.call("nearest_water_distance", global_position.x, global_position.z))
+		if d < WATER_NEAR:
+			target = 1.0 - smoothstep(WATER_FULL, WATER_NEAR, d)
+			if terrain.has_method("biome_name_at") \
+					and str(terrain.call("biome_name_at", global_position.x, global_position.z)) == "River":
+				target = minf(1.0, target * 1.15)
+	_water_vol = move_toward(_water_vol, target, delta * 1.8)
+	if _water_vol < 0.01:
+		_water_amb.volume_db = -80.0
+		return
+	# Quiet presence — only a little water sound when close
+	_water_amb.volume_db = lerpf(-52.0, WATER_VOL_DB, pow(_water_vol, 0.85))
+	if not _water_amb.playing:
+		_water_amb.play()
 
 
 func _play_clip(clip: String) -> void:

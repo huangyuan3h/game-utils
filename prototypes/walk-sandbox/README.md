@@ -15,8 +15,12 @@ Minimal Godot 4.6 prototype for natural on-foot movement.
 - **Zoom**: trackpad two-finger scroll (or pinch); mouse wheel / `+` `-` also work
 - Larger ground (**120×120**) with more walk spots
 - **Realistic terrain map** (procedural heightfield with stronger relief):
-  - Biomes: **Sand / Dirt / Grass / Mountain / River**
-  - **Flowing rivers**: downhill flow field + animated water shader (ripples, bank foam, Fresnel)
+  - Biomes: **Sea / Lake / Sand / Dirt / Grass / Mountain / River**
+  - **Three water bodies**:
+    - **Sea** — coastal plane, shore foam
+    - **Lake** — inland closed basins, still teal surface
+    - **River** — mountain spring → downhill → lake or sea (ribbons)
+  - Scale: river ≈ **3.4 m** at source, **~9.6 m** at mouth (wider than the ~1.5 m character)
   - **All cells walkable** — height-follow (no mesh trapping)
   - **`MapGenerator.generate_random(seed, opts)`** — abstract random map API
   - **G** calls `TerrainMap.generate_random()` for a new map

@@ -1,22 +1,41 @@
 class_name MapGenerator
 extends RefCounted
-## Abstract random map generator for the walk sandbox.
-## Produces heightfield + biome grids. All cells stay walkable via height-follow.
+## Procedural walkable map. This file is the pipeline only:
+##   heightfield -> coast -> lakes -> rivers -> smooth -> land biomes.
+## Stages live in scripts/map/. Public entry points stay here.
 
-enum Biome { RIVER, SAND, DIRT, GRASS, MOUNTAIN }
+const MapTypes = preload("res://scripts/map/map_types.gd")
+const MapHeightfield = preload("res://scripts/map/map_heightfield.gd")
+const MapLakes = preload("res://scripts/map/map_lakes.gd")
+const MapRivers = preload("res://scripts/map/map_rivers.gd")
 
-const DEFAULT_SIZE := 120.0
-const DEFAULT_GRID := 96
-const DEFAULT_BASE := 1.0
-const DEFAULT_MAX_H := 9.5
-## Neighbor step cap (world meters). Height-follow allows steeper visuals than physics climb.
-const DEFAULT_MAX_STEP := 1.15
+## Re-export so existing callers (TerrainMap, Player) keep using MapGenerator.
+const Biome = MapTypes.Biome
+const DEFAULT_SIZE := MapTypes.DEFAULT_SIZE
+const DEFAULT_GRID := MapTypes.DEFAULT_GRID
+const DEFAULT_BASE := MapTypes.DEFAULT_BASE
+const DEFAULT_MAX_H := MapTypes.DEFAULT_MAX_H
+const DEFAULT_MAX_STEP := MapTypes.DEFAULT_MAX_STEP
+const DEFAULT_WATER_Y := MapTypes.DEFAULT_WATER_Y
+const RIVER_HALF_W_SRC := MapTypes.RIVER_HALF_W_SRC
+const RIVER_HALF_W_MOUTH := MapTypes.RIVER_HALF_W_MOUTH
+const RIVER_DEPTH_SRC := MapTypes.RIVER_DEPTH_SRC
+const RIVER_DEPTH_MOUTH := MapTypes.RIVER_DEPTH_MOUTH
+const RIVER_BANK_MUL := MapTypes.RIVER_BANK_MUL
+const LAKE_RIVER_GAP := MapTypes.LAKE_RIVER_GAP
 
 
 static func generate_random(p_seed: int = -1, opts: Dictionary = {}) -> Dictionary:
-	## Public entry: random (or given) seed → map data.
 	var s: int = p_seed if p_seed >= 0 else int(Time.get_ticks_usec()) ^ randi()
 	return generate(s, opts)
+
+
+static func river_half_width(along: float) -> float:
+	return MapRivers.river_half_width(along)
+
+
+static func river_depth(along: float) -> float:
+	return MapRivers.river_depth(along)
 
 
 static func generate(p_seed: int, opts: Dictionary = {}) -> Dictionary:
@@ -25,68 +44,119 @@ static func generate(p_seed: int, opts: Dictionary = {}) -> Dictionary:
 	var base_h: float = float(opts.get("base_height", DEFAULT_BASE))
 	var max_h: float = float(opts.get("max_height", DEFAULT_MAX_H))
 	var max_step: float = float(opts.get("max_step", DEFAULT_MAX_STEP))
-	var relief: float = float(opts.get("relief", 1.0))  # 1 = default, >1 more dramatic
+	var relief: float = float(opts.get("relief", 1.0))
+	var water_y: float = float(opts.get("water_y", DEFAULT_WATER_Y))
 
-	var noise_h := _make_noise(p_seed, 0.011, 5, 0.5)
-	var noise_detail := _make_noise(p_seed + 3, 0.035, 3, 0.45)
-	var noise_m := _make_noise(p_seed + 17, 0.02, 3, 0.5)
-	var noise_r := _make_noise(p_seed + 91, 0.009, 2, 0.5)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = p_seed
+	var sea_edge: int = int(opts.get("sea_edge", rng.randi_range(0, 3)))
+
+	var noise_h := MapHeightfield._make_noise(p_seed, 0.011, 5, 0.5)
+	var noise_detail := MapHeightfield._make_noise(p_seed + 3, 0.035, 3, 0.45)
+	var noise_m := MapHeightfield._make_noise(p_seed + 17, 0.02, 3, 0.5)
+	var noise_ridge := MapHeightfield._make_noise(p_seed + 41, 0.007, 3, 0.5)
 
 	var heights := PackedFloat32Array()
 	heights.resize(grid * grid)
 	var biomes := PackedByteArray()
 	biomes.resize(grid * grid)
-	biomes.fill(Biome.GRASS)
+	biomes.fill(MapTypes.Biome.GRASS)
 
-	# 1) Height bake — broad hills + medium ridges + fine detail
+	# 1) Height bake — inland mountains, coastal falloff
 	for z in grid:
 		for x in grid:
 			var wx := (float(x) / float(grid - 1) - 0.5) * size
 			var wz := (float(z) / float(grid - 1) - 0.5) * size
+			var inland := MapHeightfield._inland_factor(wx, wz, size, sea_edge)
+			var sea_prox := MapHeightfield._sea_proximity(wx, wz, size, sea_edge)
 			var n1 := noise_h.get_noise_2d(wx, wz)
 			var n2 := noise_h.get_noise_2d(wx * 0.4 + 20.0, wz * 0.4 - 11.0)
 			var n3 := noise_detail.get_noise_2d(wx, wz)
-			# Soft highland lobes
-			var lobe := maxf(n2, 0.0)
-			lobe = pow(lobe, 1.35)
+			var ridge := maxf(noise_ridge.get_noise_2d(wx * 0.7, wz * 0.7), 0.0)
+			ridge = pow(ridge, 1.25) * pow(inland, 1.6)
+			var lobe := pow(maxf(n2, 0.0), 1.35) * inland
 			var h := base_h
-			h += n1 * 2.4 * relief
-			h += lobe * (max_h - base_h) * 0.9 * relief
-			h += n3 * 0.55 * relief
-			# Keep map edges slightly lower so the playable bowl reads clearly
-			var edge := maxf(absf(wx), absf(wz)) / (size * 0.5)
-			h *= lerpf(1.0, 0.88, smoothstep(0.82, 1.0, edge))
-			heights[_i(grid, x, z)] = h
+			h += n1 * 2.0 * relief
+			h += lobe * (max_h - base_h) * 0.55 * relief
+			h += ridge * (max_h - base_h) * 0.95 * relief
+			h += n3 * 0.45 * relief
+			h += inland * 1.6 * relief
+			h = lerpf(h, water_y - 0.15, smoothstep(0.55, 1.0, sea_prox) * 0.9)
+			heights[MapHeightfield._i(grid, x, z)] = h
 
-	# 2) Meandering shallow rivers (domain-warped ridges → continuous channels)
-	var noise_warp := _make_noise(p_seed + 211, 0.0065, 3, 0.5)
+	# 2) Coastal SEA + beach
 	for z in grid:
 		for x in grid:
 			var wx := (float(x) / float(grid - 1) - 0.5) * size
 			var wz := (float(z) / float(grid - 1) - 0.5) * size
-			# Warp sample domain so channels bend instead of forming blotchy blobs
-			var wxw := wx + noise_warp.get_noise_2d(wx, wz) * 14.0
-			var wzw := wz + noise_warp.get_noise_2d(wx + 40.0, wz - 18.0) * 14.0
-			var ridge := absf(noise_r.get_noise_2d(wxw, wzw))
-			# Soft secondary thread for forks / braids
-			var ridge2 := absf(noise_r.get_noise_2d(wxw * 0.72 + 55.0, wzw * 0.72 - 33.0))
-			ridge = minf(ridge, ridge2 * 1.15 + 0.01)
-			var i := _i(grid, x, z)
-			if ridge < 0.078:
-				var deepen := (0.078 - ridge) / 0.078
-				deepen = deepen * deepen # rounder channel bed
-				heights[i] -= (0.28 + deepen * 0.48) * relief
-				biomes[i] = Biome.RIVER
-			elif ridge < 0.118:
-				# Soft banks — still slightly carved for a V-shaped valley
-				var bank := (0.118 - ridge) / 0.04
-				heights[i] -= (0.06 + bank * 0.14) * relief
+			var sea_prox := MapHeightfield._sea_proximity(wx, wz, size, sea_edge)
+			var i := MapHeightfield._i(grid, x, z)
+			if sea_prox > 0.70:
+				var t := smoothstep(0.70, 0.92, sea_prox)
+				heights[i] = lerpf(heights[i], water_y - 0.55 - (sea_prox - 0.70) * 1.3, t)
+				biomes[i] = MapTypes.Biome.SEA
+			elif sea_prox > 0.56:
+				var t2 := smoothstep(0.56, 0.70, sea_prox)
+				heights[i] = lerpf(heights[i], water_y - 0.06, t2 * 0.75)
+				biomes[i] = MapTypes.Biome.SAND
 
-	# 3) Smooth then slope-limit (still walkable, but keeps relief)
-	heights = _smooth(heights, biomes, grid, 2)
-	heights = _limit_slopes(heights, grid, max_step, 5)
+	# Pre-tag mountain peaks
+	var h_min0 := INF
+	var h_max0 := -INF
+	for i in heights.size():
+		h_min0 = minf(h_min0, heights[i])
+		h_max0 = maxf(h_max0, heights[i])
+	var mountain_cut := lerpf(h_min0, h_max0, 0.72)
+	for z in grid:
+		for x in grid:
+			var i := MapHeightfield._i(grid, x, z)
+			if int(biomes[i]) == MapTypes.Biome.SEA or int(biomes[i]) == MapTypes.Biome.SAND:
+				continue
+			var wx := (float(x) / float(grid - 1) - 0.5) * size
+			var wz := (float(z) / float(grid - 1) - 0.5) * size
+			if heights[i] >= mountain_cut and MapHeightfield._inland_factor(wx, wz, size, sea_edge) > 0.45:
+				biomes[i] = MapTypes.Biome.MOUNTAIN
 
-	# 4) Biomes from height + moisture (preserve rivers)
+	# 3) Inland LAKE basins (closed depressions)
+	var lake_result: Dictionary = MapLakes._place_lakes(heights, biomes, grid, size, sea_edge, water_y, relief, rng)
+	heights = lake_result["heights"] as PackedFloat32Array
+	var lakes: Array = lake_result["lakes"] as Array
+
+	# 4) Rivers: mountain → lake or sea (+ optional lake outlet to sea)
+	var rivers: Array = MapRivers._trace_rivers(heights, biomes, grid, size, sea_edge, water_y, lakes, rng)
+	if not lakes.is_empty() and rivers.size() < 3:
+		var outlet_river: PackedVector2Array = MapRivers._trace_lake_outlet(
+			heights, biomes, grid, size, sea_edge, water_y, lakes[0] as Dictionary, rng
+		)
+		# Keep only outlets that quickly leave the lake (no shore-hugging ribbon)
+		if outlet_river.size() >= 8:
+			var mid_clear := INF
+			var i0 := int(outlet_river.size() * 0.2)
+			var i1 := maxi(i0 + 1, int(outlet_river.size() * 0.9))
+			for i in range(i0, i1):
+				mid_clear = minf(mid_clear, MapLakes._lake_shore_clearance(outlet_river[i], lakes))
+			if mid_clear >= MapTypes.LAKE_RIVER_GAP * 0.75:
+				rivers.append(outlet_river)
+
+	# 5) Enforce downhill + carve river channels
+	heights = MapRivers._enforce_downhill(heights, biomes, grid, size, rivers, water_y, lakes)
+	heights = MapRivers._carve_rivers(heights, biomes, grid, size, rivers, water_y, lakes, relief)
+
+	# 6) Smooth + slope-limit
+	heights = MapHeightfield._smooth(heights, biomes, grid, 2)
+	heights = MapHeightfield._limit_slopes(heights, grid, max_step, 5)
+	for z in grid:
+		for x in grid:
+			var i := MapHeightfield._i(grid, x, z)
+			var b := int(biomes[i])
+			if b == MapTypes.Biome.SEA:
+				heights[i] = minf(heights[i], water_y - 0.35)
+			elif b == MapTypes.Biome.LAKE:
+				# Keep lake bed under its water surface
+				var ly := MapLakes._lake_y_at_cell(lakes, x, z, grid, size, water_y)
+				heights[i] = minf(heights[i], ly - 0.25)
+
+	# 7) Remaining land biomes (preserve SEA / LAKE / RIVER / MOUNTAIN / coastal SAND)
 	var h_min := INF
 	var h_max := -INF
 	for i in heights.size():
@@ -96,24 +166,28 @@ static func generate(p_seed: int, opts: Dictionary = {}) -> Dictionary:
 
 	for z in grid:
 		for x in grid:
-			var i := _i(grid, x, z)
-			if int(biomes[i]) == Biome.RIVER:
+			var i := MapHeightfield._i(grid, x, z)
+			var b0 := int(biomes[i])
+			if b0 == MapTypes.Biome.SEA or b0 == MapTypes.Biome.LAKE or b0 == MapTypes.Biome.RIVER or b0 == MapTypes.Biome.MOUNTAIN:
 				continue
 			var wx := (float(x) / float(grid - 1) - 0.5) * size
 			var wz := (float(z) / float(grid - 1) - 0.5) * size
+			if b0 == MapTypes.Biome.SAND and (
+				MapHeightfield._sea_proximity(wx, wz, size, sea_edge) > 0.52
+				or MapLakes._near_lake(lakes, wx, wz)
+			):
+				continue
 			var h := heights[i]
 			var t := (h - h_min) / h_span
 			var moist := (noise_m.get_noise_2d(wx, wz) + 1.0) * 0.5
-			var b: int = Biome.GRASS
-			if t > 0.72:
-				b = Biome.MOUNTAIN
+			if t > 0.70:
+				biomes[i] = MapTypes.Biome.MOUNTAIN
 			elif t < 0.22 and moist < 0.48:
-				b = Biome.SAND
+				biomes[i] = MapTypes.Biome.SAND
 			elif moist < 0.30 or (t > 0.55 and moist < 0.48):
-				b = Biome.DIRT
+				biomes[i] = MapTypes.Biome.DIRT
 			else:
-				b = Biome.GRASS
-			biomes[i] = b
+				biomes[i] = MapTypes.Biome.GRASS
 
 	return {
 		"seed": p_seed,
@@ -121,65 +195,36 @@ static func generate(p_seed: int, opts: Dictionary = {}) -> Dictionary:
 		"grid": grid,
 		"base_height": base_h,
 		"max_height": max_h,
+		"water_y": water_y,
+		"sea_edge": sea_edge,
 		"heights": heights,
 		"biomes": biomes,
+		"rivers": rivers,
+		"lakes": lakes,
 		"h_min": h_min,
 		"h_max": h_max,
 	}
 
 
-static func _make_noise(p_seed: int, freq: float, octaves: int, gain: float) -> FastNoiseLite:
-	var n := FastNoiseLite.new()
-	n.seed = p_seed
-	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	n.frequency = freq
-	n.fractal_type = FastNoiseLite.FRACTAL_FBM
-	n.fractal_octaves = octaves
-	n.fractal_gain = gain
-	return n
+## --- Compatibility wrappers (terrain mesh still calls these) --------------
+
+static func _sea_proximity(wx: float, wz: float, size: float, sea_edge: int) -> float:
+	return MapHeightfield._sea_proximity(wx, wz, size, sea_edge)
 
 
-static func _i(grid: int, x: int, z: int) -> int:
-	return z * grid + x
+static func _dist_to_polyline(p: Vector2, pts: PackedVector2Array) -> float:
+	return MapRivers._dist_to_polyline(p, pts)
 
 
-static func _smooth(heights: PackedFloat32Array, biomes: PackedByteArray, grid: int, times: int) -> PackedFloat32Array:
-	var cur := heights
-	for _t in times:
-		var next := cur.duplicate()
-		for z in range(1, grid - 1):
-			for x in range(1, grid - 1):
-				var i := _i(grid, x, z)
-				var avg := (
-					cur[_i(grid, x - 1, z)]
-					+ cur[_i(grid, x + 1, z)]
-					+ cur[_i(grid, x, z - 1)]
-					+ cur[_i(grid, x, z + 1)]
-					+ cur[i]
-				) / 5.0
-				var blend := 0.4 if int(biomes[i]) == Biome.RIVER else 0.55
-				next[i] = lerpf(cur[i], avg, blend)
-		cur = next
-	return cur
+static func _mouth_water_y(
+	p: Vector2, biomes: PackedByteArray, grid: int, size: float, water_y: float, lakes: Array
+) -> float:
+	return MapLakes._mouth_water_y(p, biomes, grid, size, water_y, lakes)
 
 
-static func _limit_slopes(heights: PackedFloat32Array, grid: int, max_step: float, passes: int) -> PackedFloat32Array:
-	var cur := heights.duplicate()
-	for _p in passes:
-		for z in grid:
-			for x in grid:
-				var i := _i(grid, x, z)
-				var h: float = cur[i]
-				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-					var nx: int = x + d.x
-					var nz: int = z + d.y
-					if nx < 0 or nz < 0 or nx >= grid or nz >= grid:
-						continue
-					var j: int = _i(grid, nx, nz)
-					var nh: float = cur[j]
-					var diff: float = nh - h
-					if diff > max_step:
-						cur[j] = h + max_step
-					elif diff < -max_step:
-						cur[j] = h - max_step
-	return cur
+static func _sanitize_polyline(pts: PackedVector2Array) -> PackedVector2Array:
+	return MapRivers._sanitize_polyline(pts)
+
+
+static func _smooth_polyline(pts: PackedVector2Array, iters: int) -> PackedVector2Array:
+	return MapRivers._smooth_polyline(pts, iters)

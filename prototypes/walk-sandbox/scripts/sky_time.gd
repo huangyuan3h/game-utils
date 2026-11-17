@@ -61,6 +61,12 @@ func get_hud_line() -> String:
 	]
 
 
+func get_night_factor() -> float:
+	## 0 = full day, 1 = full night (for headlights / UI).
+	var elev := _sun_elevation_rad()
+	return 1.0 - clampf(elev * 1.15 + 0.15, 0.0, 1.0)
+
+
 func _phase_name() -> String:
 	if hour >= 5.0 and hour < 7.0:
 		return "sunrise"
@@ -135,31 +141,53 @@ func _setup_stars() -> void:
 
 
 func _setup_clouds() -> void:
+	## High sky-band clouds — stay well above camera/play space so they never fog the view.
 	for c in _clouds.get_children():
 		c.queue_free()
 	_cloud_mats.clear()
 	_cloud_bases.clear()
-	for i in 10:
-		var cloud := MeshInstance3D.new()
-		var sphere := SphereMesh.new()
-		sphere.radius = _rng.randf_range(2.2, 4.5)
-		sphere.height = sphere.radius * _rng.randf_range(0.55, 0.85)
-		cloud.mesh = sphere
-		var mat := StandardMaterial3D.new()
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = Color(1, 1, 1, 0.55)
-		mat.roughness = 1.0
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-		cloud.material_override = mat
+	for i in 12:
+		var cluster := Node3D.new()
+		# Prefer the outer ring of the map so clouds frame the horizon, not the playfield
+		var ang := _rng.randf() * TAU
+		var rad := _rng.randf_range(38.0, 95.0)
 		var base := Vector3(
-			_rng.randf_range(-80.0, 80.0),
-			_rng.randf_range(14.0, 28.0),
-			_rng.randf_range(-80.0, 80.0)
+			cos(ang) * rad,
+			_rng.randf_range(52.0, 78.0),
+			sin(ang) * rad
 		)
-		cloud.position = base
-		cloud.scale = Vector3(_rng.randf_range(1.5, 3.2), 0.55, _rng.randf_range(1.2, 2.6))
-		_clouds.add_child(cloud)
-		_cloud_mats.append(mat)
+		cluster.position = base
+		var puff_count := _rng.randi_range(4, 7)
+		for p in puff_count:
+			var puff := MeshInstance3D.new()
+			var sphere := SphereMesh.new()
+			sphere.radius = _rng.randf_range(1.4, 2.6)
+			sphere.height = sphere.radius * _rng.randf_range(0.65, 0.95)
+			sphere.radial_segments = 10
+			sphere.rings = 6
+			puff.mesh = sphere
+			var mat := StandardMaterial3D.new()
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_color = Color(0.96, 0.97, 0.99, 0.32)
+			mat.roughness = 1.0
+			mat.metallic = 0.0
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mat.no_depth_test = false
+			puff.material_override = mat
+			puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			puff.position = Vector3(
+				_rng.randf_range(-4.0, 4.0),
+				_rng.randf_range(-0.8, 1.2),
+				_rng.randf_range(-3.0, 3.0)
+			)
+			puff.scale = Vector3(
+				_rng.randf_range(1.0, 1.8),
+				_rng.randf_range(0.40, 0.70),
+				_rng.randf_range(0.95, 1.6)
+			)
+			cluster.add_child(puff)
+			_cloud_mats.append(mat)
+		_clouds.add_child(cluster)
 		_cloud_bases.append(base)
 	_refresh_weather_nodes()
 
@@ -241,8 +269,9 @@ func _apply_visuals(delta: float) -> void:
 	_sun_light.light_energy = maxf(elev, 0.0) * 1.35 * cloud_dim
 	_sun_light.light_color = Color(1.0, 0.96, 0.88).lerp(Color(1.0, 0.55, 0.25), sunset_f)
 	_sun_light.shadow_enabled = elev > 0.02
-	_moon_light.light_energy = night_f * 0.28
-	_moon_light.light_color = Color(0.65, 0.75, 1.0)
+	# Night stays readable — soft moonlight, not pitch black
+	_moon_light.light_energy = night_f * 0.55
+	_moon_light.light_color = Color(0.70, 0.78, 1.0)
 
 	_sun_disc.visible = elev > -0.05
 	_sun_disc.global_position = sun_dir * 85.0
@@ -280,42 +309,65 @@ func _apply_visuals(delta: float) -> void:
 	_sky.sky_horizon_color = horizon
 	_sky.ground_horizon_color = horizon.darkened(0.15)
 	_sky.ground_bottom_color = Color(0.12, 0.16, 0.1).lerp(Color(0.02, 0.03, 0.05), night_f)
-	_sky.sky_energy_multiplier = lerpf(0.35, 1.15, day_f) * cloud_dim
-	_env.environment.ambient_light_energy = lerpf(0.18, 0.65, day_f) * cloud_dim
-	_env.environment.background_energy_multiplier = lerpf(0.4, 1.0, day_f)
+	_sky.sky_energy_multiplier = lerpf(0.45, 1.15, day_f) * cloud_dim
+	# Floor ambient so night never goes fully black (headlamp fills the rest)
+	_env.environment.ambient_light_energy = lerpf(0.32, 0.65, day_f) * cloud_dim
+	_env.environment.background_energy_multiplier = lerpf(0.55, 1.0, day_f)
 
-	# Drift clouds
+	# Drift cloud clusters high above the camera
 	var wind: Vector3 = Vector3(1.2, 0, 0.35) * (1.0 + SPEEDS[speed_index] * 0.002)
 	var cloud_alpha := 0.0
 	match weather:
 		Weather.CLEAR:
-			cloud_alpha = 0.25
+			cloud_alpha = 0.18
 		Weather.CLOUDY:
-			cloud_alpha = 0.55
+			cloud_alpha = 0.38
 		Weather.OVERCAST:
-			cloud_alpha = 0.78
+			cloud_alpha = 0.55
 		Weather.RAIN:
-			cloud_alpha = 0.7
+			cloud_alpha = 0.48
+	var tint := Color(0.96, 0.97, 0.99)
+	if weather == Weather.CLOUDY:
+		tint = Color(0.78, 0.80, 0.84)
+	elif weather == Weather.OVERCAST:
+		tint = Color(0.55, 0.57, 0.60)
+	elif weather == Weather.RAIN:
+		tint = Color(0.42, 0.44, 0.48)
+	var cam := get_viewport().get_camera_3d()
+	var cam_pos := Vector3.ZERO
+	if cam != null:
+		cam_pos = cam.global_position
+	var mat_i := 0
 	for i in _clouds.get_child_count():
-		var cloud := _clouds.get_child(i) as MeshInstance3D
-		if cloud == null:
+		var cluster := _clouds.get_child(i) as Node3D
+		if cluster == null:
 			continue
-		cloud.position += wind * delta
-		if cloud.position.x > 90.0:
-			cloud.position.x = -90.0
-		if cloud.position.z > 90.0:
-			cloud.position.z = -90.0
-		if cloud.position.x < -90.0:
-			cloud.position.x = 90.0
-		if cloud.position.z < -90.0:
-			cloud.position.z = 90.0
-		var mat := _cloud_mats[i] if i < _cloud_mats.size() else null
-		if mat:
-			var tint := Color(1, 1, 1).lerp(Color(0.45, 0.48, 0.52), 0.0 if weather == Weather.CLEAR else 0.55)
-			if weather == Weather.RAIN:
-				tint = Color(0.4, 0.42, 0.46)
-			mat.albedo_color = Color(tint.r, tint.g, tint.b, cloud_alpha * lerpf(0.35, 1.0, day_f + 0.2))
-		cloud.visible = cloud_alpha > 0.05
+		cluster.position += wind * delta
+		# Keep height locked in the sky band; wrap on the outer ring only
+		cluster.position.y = clampf(cluster.position.y, 50.0, 82.0)
+		if cluster.position.x > 100.0:
+			cluster.position.x = -100.0
+		if cluster.position.z > 100.0:
+			cluster.position.z = -100.0
+		if cluster.position.x < -100.0:
+			cluster.position.x = 100.0
+		if cluster.position.z < -100.0:
+			cluster.position.z = 100.0
+		# Fade anything that drifts too close to the camera frustum
+		var d_cam := cluster.global_position.distance_to(cam_pos)
+		var near_fade := smoothstep(22.0, 40.0, d_cam)
+		var local_alpha := cloud_alpha * near_fade * lerpf(0.45, 1.0, day_f + 0.25)
+		cluster.visible = local_alpha > 0.04
+		for child in cluster.get_children():
+			var puff := child as MeshInstance3D
+			if puff == null:
+				continue
+			var mat := puff.material_override as StandardMaterial3D
+			if mat == null and mat_i < _cloud_mats.size():
+				mat = _cloud_mats[mat_i]
+			mat_i += 1
+			if mat:
+				mat.albedo_color = Color(tint.r, tint.g, tint.b, local_alpha)
 
 	# Keep rain over the playable ground (follow origin; fine for sandbox)
-	_rain.position = Vector3(0, 18, 0)
+	_rain.position = Vector3(0, 22, 0)
