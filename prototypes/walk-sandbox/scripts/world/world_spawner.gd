@@ -130,6 +130,135 @@ static func export_resources_state(nodes: Array[ResourceNode]) -> Dictionary:
 	return out
 
 
+static func create_gather_wood_quest() -> QuestDef:
+	return QuestDef.from_dict({
+		"id": "gather_wood",
+		"title": "Timber for the Ward",
+		"description": "Bring 3 wood to the elder.",
+		"objectives": [
+			{
+				"id": "deliver",
+				"description": "Deliver 3 wood",
+				"type": "event",
+				"event": "wood_delivered",
+				"target": 1,
+			},
+		],
+		"rewards": [
+			{"type": "item", "id": "coin", "amount": 8},
+			{"type": "flag", "id": "elder_paid", "value": true},
+		],
+	})
+
+
+static func create_elder_dialogue() -> DialogueDef:
+	return DialogueDef.from_dict({
+		"id": "elder_intro",
+		"start": "greet",
+		"nodes": [
+			{
+				"id": "greet",
+				"speaker": "Elder",
+				"text": "The beacon ward needs timber.",
+				"branches": [
+					{
+						"conditions": [
+							{"type": "quest", "id": "gather_wood", "state": "completed"},
+						],
+						"next": "done",
+					},
+				],
+				"choices": [
+					{
+						"text": "I will bring three wood.",
+						"next": "accepted",
+						"conditions": [
+							{"type": "quest", "id": "gather_wood", "state": "inactive"},
+						],
+						"effects": [
+							{"type": "start_quest", "id": "gather_wood"},
+							{"type": "set_flag", "id": "met_elder", "value": true},
+						],
+					},
+					{
+						"text": "Here is the wood.",
+						"next": "paid",
+						"conditions": [
+							{"type": "quest", "id": "gather_wood", "state": "active"},
+							{"type": "item", "id": "wood", "amount": 3},
+						],
+						"effects": [
+							{"type": "remove_item", "id": "wood", "amount": 3},
+							{"type": "emit_event", "event": "wood_delivered"},
+						],
+					},
+					{
+						"text": "I will return later.",
+						"next": "later",
+						"conditions": [
+							{"type": "quest", "id": "gather_wood", "state": "not_completed"},
+						],
+					},
+				],
+			},
+			{
+				"id": "accepted",
+				"speaker": "Elder",
+				"text": "Three timber beams will do. Fell the trees nearby.",
+			},
+			{
+				"id": "paid",
+				"speaker": "Elder",
+				"text": "The ward is steadier. Take this for your trouble.",
+			},
+			{
+				"id": "done",
+				"speaker": "Elder",
+				"text": "You already helped the ward.",
+			},
+			{
+				"id": "later",
+				"speaker": "Elder",
+				"text": "I will keep the watch.",
+			},
+		],
+	})
+
+
+static func spawn_elder(markers_root: Node3D, terrain: Node, center: Vector3) -> DialogueInteractable:
+	if markers_root == null:
+		return null
+	for child in markers_root.get_children():
+		if child is DialogueInteractable:
+			markers_root.remove_child(child)
+			child.queue_free()
+
+	var elder := DialogueInteractable.new()
+	elder.name = "Elder"
+	elder.display_name = "Elder"
+	elder.prompt_text = "Speak with Elder"
+	elder.interaction_id = "elder"
+	elder.interaction_priority = 5
+	elder.interaction_radius = 2.4
+	elder.dialogue = create_elder_dialogue()
+
+	var offset := Vector2(2.4, 1.6)
+	var data: MapData = terrain.call("get_map_data") as MapData if (terrain != null and terrain.has_method("get_map_data")) else null
+	var map_half := (data.size * 0.5 - 4.0) if data != null else 52.0
+	var wx := clampf(center.x + offset.x, -map_half, map_half)
+	var wz := clampf(center.z + offset.y, -map_half, map_half)
+	if data != null and data.sample_water_surface(wx, wz) > -1000.0:
+		wx = center.x + offset.x * 0.35
+		wz = center.z + offset.y * 0.35
+	var wy := center.y
+	if terrain != null and terrain.has_method("sample_height"):
+		wy = float(terrain.call("sample_height", wx, wz))
+
+	markers_root.add_child(elder)
+	elder.position = Vector3(wx, wy, wz)
+	return elder
+
+
 static func create_beacon_quest() -> QuestDef:
 	return QuestDef.from_dict({
 		"id": "activate_beacons",

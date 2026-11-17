@@ -19,6 +19,7 @@ const WorldBeaconScript = preload("res://scripts/world/world_beacon.gd")
 
 const InputRouterScript = preload("res://addons/gu_core/input/input_router.gd")
 const SettingsStoreScript = preload("res://addons/gu_core/settings/settings_store.gd")
+const TranslationCatalogScript = preload("res://addons/gu_core/i18n/translation_catalog.gd")
 const AudioManagerScript = preload("res://addons/gu_core/audio/audio_manager.gd")
 const SaveServiceScript = preload("res://addons/gu_core/save/save_service.gd")
 const UIRouterScript = preload("res://addons/gu_core/ui/ui_router.gd")
@@ -107,6 +108,7 @@ func _run_all() -> void:
 	_test_character_climbing()
 	_test_input_router()
 	_test_settings_store()
+	_test_settings_locale()
 	_test_audio_manager()
 	_test_save_service()
 	_test_game_flow_and_ui_router()
@@ -125,8 +127,10 @@ func _run_all() -> void:
 	_test_pool_service_and_scene_loader()
 	_test_input_rebinding_and_dev_console()
 	_test_flags_and_quest_tracker()
+	_test_dialogue()
 	_test_save_slots_panel_and_keybind_list()
 	_test_world_entity_primitives()
+	_test_gameplay_hud()
 
 
 func _test_map_data_and_generator() -> void:
@@ -415,6 +419,82 @@ func _test_settings_store() -> void:
 		DirAccess.remove_absolute(tmp_path)
 	store.free()
 	reloaded.free()
+
+
+func _test_settings_locale() -> void:
+	var prev_locale := TranslationServer.get_locale()
+	var shipped = TranslationCatalogScript.new()
+	var shipped_err: Error = shipped.load_dir("res://data")
+	_assert(shipped_err == OK, "res://data localization catalog loads")
+	var shipped_locales: PackedStringArray = shipped.get_locales()
+	_assert(shipped_locales.has("en") and shipped_locales.has("zh"), "Shipped ui_i18n.csv exposes en and zh")
+	_assert(shipped.message("zh", "SETTINGS_LANGUAGE") == "语言", "Shipped zh translation for SETTINGS_LANGUAGE")
+	_assert(shipped.locale_label("zh") == "中文", "Locale autonym is read from that locale")
+	shipped.unload()
+
+	var tmp_cfg := "user://test_settings_locale.cfg"
+	var tmp_dir := "user://test_i18n_catalog"
+	if FileAccess.file_exists(tmp_cfg):
+		DirAccess.remove_absolute(tmp_cfg)
+	_wipe_user_dir(tmp_dir)
+	DirAccess.make_dir_absolute(tmp_dir)
+
+	var csv_file := FileAccess.open(tmp_dir.path_join("ui_i18n.csv"), FileAccess.WRITE)
+	_assert(csv_file != null, "Locale fixture CSV opens")
+	if csv_file != null:
+		csv_file.store_string("keys,en,zh\nTEST_HELLO,\"Hello, world\",你好\nLOCALE_en,English,英语\nLOCALE_zh,Chinese,中文\n")
+		csv_file.close()
+	var manifest_file := FileAccess.open(tmp_dir.path_join("i18n_manifest.json"), FileAccess.WRITE)
+	_assert(manifest_file != null, "Locale fixture manifest opens")
+	if manifest_file != null:
+		manifest_file.store_string("{\n  \"version\": 1,\n  \"default_locale\": \"en\",\n  \"locales\": [\"en\", \"zh\"],\n  \"files\": [\"ui_i18n.csv\"]\n}\n")
+		manifest_file.close()
+
+	var store := SettingsStoreScript.new()
+	store.config_path = tmp_cfg
+	store.translation_dir = tmp_dir
+	store.load_settings()
+	var err: Error = store.load_translations()
+	_assert(err == OK, "SettingsStore loads localization CSV into TranslationServer")
+	_assert(store.get_locales().size() == 2, "SettingsStore locales come from the catalog")
+	store.set_value("locale", "zh")
+	_assert(str(store.get_value("locale")) == "zh", "SettingsStore accepts catalog locale zh")
+	_assert(TranslationServer.get_locale() == "zh", "SettingsStore applies locale through TranslationServer")
+	_assert(tr("TEST_HELLO") == "你好", "Quoted CSV cell reaches TranslationServer for zh")
+	_assert(store.locale_label("zh") == "中文", "SettingsStore locale_label uses the locale autonym")
+	store.set_value("locale", "nope")
+	_assert(str(store.get_value("locale")) == "en", "Unknown locale falls back to default_locale")
+	_assert(TranslationServer.get_locale() == "en", "Fallback locale is applied to TranslationServer")
+
+	store.set_value("locale", "zh")
+	var reloaded := SettingsStoreScript.new()
+	reloaded.config_path = tmp_cfg
+	reloaded.translation_dir = tmp_dir
+	var load_err := reloaded.load_settings()
+	_assert(load_err == OK and str(reloaded.get_value("locale")) == "zh", "Persisted locale survives SettingsStore reload")
+	_assert(reloaded.load_translations() == OK, "Reloaded SettingsStore loads the same catalog")
+	_assert(TranslationServer.get_locale() == "zh" and tr("TEST_HELLO") == "你好", "Reloaded locale is applied to TranslationServer")
+	reloaded.reset_defaults()
+	_assert(str(reloaded.get_value("locale")) == "en" and TranslationServer.get_locale() == "en", "reset_defaults restores locale en")
+	_assert(tr("TEST_HELLO") == "Hello, world", "Quoted comma in the en column survives CSV parsing")
+
+	store.clear_translations()
+	reloaded.clear_translations()
+	TranslationServer.set_locale(prev_locale)
+	store.free()
+	reloaded.free()
+	if FileAccess.file_exists(tmp_cfg):
+		DirAccess.remove_absolute(tmp_cfg)
+	_wipe_user_dir(tmp_dir)
+
+
+func _wipe_user_dir(path: String) -> void:
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	for name in DirAccess.get_files_at(path):
+		dir.remove(String(name))
+	DirAccess.remove_absolute(path)
 
 
 func _test_audio_manager() -> void:
@@ -1058,6 +1138,9 @@ func _test_stat_set_and_inventory() -> void:
 	_assert(inv.count_item(&"wood") == 10 and inv.has_item(&"wood", 10), "InventoryContainer sums stacks accurately")
 	_assert(not inv.remove_item(&"wood", 11) and inv.count_item(&"wood") == 10, "Atomic remove_item leaves inventory intact when short")
 	_assert(inv.remove_item(&"wood", 7) and inv.count_item(&"wood") == 3, "remove_item drains across stacks accurately")
+	_assert(inv.can_add(&"wood", 7) and not inv.can_add(&"wood", 8), "InventoryContainer.can_add respects leftover stack space and free slots")
+	_assert(inv.can_add(&"ore", 10) and not inv.can_add(&"ore", 11), "InventoryContainer.can_add uses default max stack for unregistered items")
+	_assert(inv.count_item(&"wood") == 3, "InventoryContainer.can_add does not mutate slots")
 
 	# SaveService round-trip for StatSet + InventoryContainer
 	var tmp_dir := "user://test_saves_p1"
@@ -1386,6 +1469,208 @@ func _test_flags_and_quest_tracker() -> void:
 	bus.free()
 
 
+func _dialogue_choice_index(view: Dictionary, text: String) -> int:
+	var choices: Variant = view.get("choices", [])
+	if choices is Array:
+		for raw in choices as Array:
+			if raw is Dictionary and str((raw as Dictionary).get("text", "")) == text:
+				return int((raw as Dictionary).get("index", -1))
+	return -1
+
+
+func _test_dialogue() -> void:
+	var broken := DialogueDef.from_dict({
+		"id": "bad",
+		"start": "a",
+		"nodes": [{"id": "a", "next": "missing"}],
+	})
+	_assert(not broken.is_valid(), "DialogueDef rejects a next target that does not exist")
+	var runner := DialogueRunner.new()
+	var rejected := runner.start(broken)
+	_assert(not bool(rejected.get("ok", true)) and bool(rejected.get("ended", false)), "DialogueRunner refuses an invalid graph")
+
+	var flags := FlagStore.new()
+	runner.bind(flags, null, null, null)
+	var gated := DialogueDef.from_dict({
+		"id": "gate",
+		"start": "greet",
+		"nodes": [
+			{
+				"id": "greet",
+				"speaker": "Elder",
+				"text": "Well?",
+				"choices": [
+					{
+						"text": "You know me.",
+						"next": "known",
+						"conditions": [{"type": "flag", "id": "met_elder", "op": "eq", "value": true}],
+						"effects": [{"type": "inc_flag", "id": "talks", "delta": 1}],
+					},
+				],
+			},
+			{"id": "known", "text": "Welcome back."},
+		],
+	})
+	var view := runner.start(gated)
+	_assert((view.get("choices", []) as Array).is_empty() and bool(view.get("terminal", false)), "Flag condition hides the only choice")
+	flags.set_flag(&"met_elder", true)
+	view = runner.start(gated)
+	_assert((view.get("choices", []) as Array).size() == 1, "Flag condition reveals the choice")
+	view = runner.choose(0)
+	_assert(flags.get_int(&"talks") == 1 and String(view.get("node_id", "")) == "known", "Choice effect writes a flag and advances")
+
+	var quests := QuestTracker.new()
+	quests.register_quest(QuestDef.from_dict({
+		"id": "errand",
+		"objectives": [{"id": "wait", "type": "event", "event": "never_happens", "target": 1}],
+	}))
+	var hire := DialogueRunner.new()
+	hire.bind(flags, quests, null, null)
+	var hire_def := DialogueDef.from_dict({
+		"id": "hire",
+		"start": "ask",
+		"nodes": [{
+			"id": "ask",
+			"text": "Help?",
+			"choices": [{
+				"text": "Yes",
+				"effects": [{"type": "start_quest", "id": "errand"}],
+			}],
+		}],
+	})
+	view = hire.start(hire_def)
+	view = hire.choose(0)
+	_assert(bool(view.get("ended", false)) and quests.is_active(&"errand"), "Dialogue start_quest accepts a quest")
+	view = hire.start(hire_def)
+	view = hire.choose(0)
+	_assert(bool(view.get("ok", false)) and bool(view.get("ended", false)) and quests.is_active(&"errand"), "start_quest is a no-op when the quest is already active")
+
+	var short_inv := InventoryContainer.new()
+	short_inv.add_item(&"wood", 1)
+	var trade := DialogueRunner.new()
+	trade.bind(null, null, short_inv, null)
+	var trade_def := DialogueDef.from_dict({
+		"id": "trade",
+		"start": "offer",
+		"nodes": [
+			{
+				"id": "offer",
+				"text": "Three wood.",
+				"choices": [{
+					"text": "Hand them over.",
+					"next": "thanks",
+					"effects": [{"type": "remove_item", "id": "wood", "amount": 3}],
+				}],
+			},
+			{"id": "thanks", "text": "Good."},
+		],
+	})
+	view = trade.start(trade_def)
+	view = trade.choose(0)
+	_assert(str(view.get("error", "")) == "missing_item" and String(view.get("node_id", "")) == "offer", "Short inventory keeps the line in place")
+	_assert(short_inv.count_item(&"wood") == 1, "Failed remove_item does not change the inventory")
+
+	var tight := InventoryContainer.new(1, 1)
+	tight.add_item(&"wood", 1)
+	var pack := DialogueRunner.new()
+	pack.bind(null, null, tight, null)
+	var pack_def := DialogueDef.from_dict({
+		"id": "pack",
+		"start": "offer",
+		"nodes": [
+			{
+				"id": "offer",
+				"text": "Swap?",
+				"choices": [{
+					"text": "Deal",
+					"next": "thanks",
+					"effects": [
+						{"type": "remove_item", "id": "wood", "amount": 1},
+						{"type": "add_item", "id": "ore", "amount": 2},
+					],
+				}],
+			},
+			{"id": "thanks", "text": "Done."},
+		],
+	})
+	view = pack.start(pack_def)
+	view = pack.choose(0)
+	_assert(str(view.get("error", "")) == "inventory_full" and String(view.get("node_id", "")) == "offer", "Full pack keeps the line in place")
+	_assert(tight.count_item(&"wood") == 1 and tight.count_item(&"ore") == 0, "Failed exchange rolls back both sides")
+
+	var bus := EventBusScript.new()
+	var bag := InventoryContainer.new()
+	var story_flags := FlagStore.new()
+	var story := QuestTracker.new()
+	story.register_quest(WorldSpawner.create_gather_wood_quest())
+	story.bind(bus, story_flags, bag)
+	var elder := DialogueRunner.new()
+	elder.bind(story_flags, story, bag, bus)
+	var elder_def := WorldSpawner.create_elder_dialogue()
+	_assert(elder_def.is_valid(), "Elder dialogue graph is valid")
+	view = elder.start(elder_def)
+	var accept := _dialogue_choice_index(view, "I will bring three wood.")
+	_assert(accept >= 0 and _dialogue_choice_index(view, "Here is the wood.") == -1, "Delivery stays hidden until the quest is active and stocked")
+	view = elder.choose(accept)
+	_assert(story.is_active(&"gather_wood") and story_flags.get_bool(&"met_elder"), "Accept choice starts the quest and sets a flag")
+	_assert(String(view.get("node_id", "")) == "accepted", "Accept choice advances to the accepted line")
+
+	bag.add_item(&"wood", 2)
+	view = elder.start(elder_def)
+	_assert(_dialogue_choice_index(view, "Here is the wood.") == -1, "Delivery stays hidden until the player holds 3 wood")
+	bag.add_item(&"wood", 1)
+	view = elder.start(elder_def)
+	var deliver := _dialogue_choice_index(view, "Here is the wood.")
+	_assert(deliver >= 0, "Delivery appears once the quest is active and the wood is in hand")
+	view = elder.choose(deliver)
+	_assert(bag.count_item(&"wood") == 0, "Delivery removes the promised wood")
+	_assert(story.is_completed(&"gather_wood"), "Delivery event completes the quest")
+	_assert(bag.count_item(&"coin") == 8, "Quest reward grants coins after delivery")
+	_assert(story_flags.get_bool(&"elder_paid"), "Quest reward sets the paid flag")
+	_assert(String(view.get("node_id", "")) == "paid", "Delivery advances to the paid line")
+
+	view = elder.start(elder_def)
+	_assert((view.get("choices", []) as Array).is_empty() and bool(view.get("can_continue", false)), "Completed quest hides choices and offers Continue")
+	view = elder.continue_line()
+	_assert(String(view.get("node_id", "")) == "done" and bool(view.get("terminal", false)) and not bool(view.get("ended", true)), "Completed branch lands on the closing line")
+
+	var router := get_root().get_node("InputRouter")
+	var was_gameplay := bool(router.call("is_gameplay_active"))
+	var stack_before := int(router.call("get_stack_size"))
+	var host := Node3D.new()
+	get_root().add_child(host)
+	var box := DialogueBox.new()
+	host.add_child(box)
+	var box_flags := FlagStore.new()
+	box.bind(box_flags, null, null, null)
+	var npc := DialogueInteractable.new()
+	npc.dialogue = DialogueDef.from_dict({
+		"id": "hi",
+		"start": "a",
+		"nodes": [{
+			"id": "a",
+			"speaker": "Elder",
+			"text": "Hello",
+			"effects": [{"type": "set_flag", "id": "spoke", "value": true}],
+		}],
+	})
+	host.add_child(npc)
+	_assert(npc.interact(host), "DialogueInteractable accepts an actor")
+	_assert(box.is_open() and box_flags.get_bool(&"spoke"), "DialogueInteractable opens DialogueBox and applies the line")
+	_assert(not bool(router.call("is_gameplay_active")), "DialogueBox pushes the UI input context")
+	var close_btn := box.find_child("CloseButton", true, false) as Button
+	_assert(close_btn != null, "Terminal line shows Close")
+	if close_btn != null:
+		close_btn.pressed.emit()
+	_assert(not box.is_open(), "Close dismisses DialogueBox")
+	_assert(bool(router.call("is_gameplay_active")) == was_gameplay, "Closing DialogueBox restores the previous gameplay input state")
+	_assert(int(router.call("get_stack_size")) == stack_before, "Closing DialogueBox pops its input context")
+
+	story.unbind()
+	host.free()
+	bus.free()
+
+
 func _test_save_slots_panel_and_keybind_list() -> void:
 	# 1) SaveService slot metadata & SaveSlotsPanel
 	var tmp_dir := "user://test_saves_slots_ui"
@@ -1477,7 +1762,16 @@ func _test_save_slots_panel_and_keybind_list() -> void:
 	if FileAccess.file_exists(tmp_cfg):
 		DirAccess.remove_absolute(tmp_cfg)
 
-	# Verify SettingsPanel tab toggle
+	# Verify SettingsPanel tab toggle and locale options from the shared catalog.
+	var lang_store := get_root().get_node_or_null("SettingsStore")
+	var spawned_store: Node = null
+	if lang_store == null:
+		spawned_store = SettingsStoreScript.new()
+		spawned_store.name = "SettingsStore"
+		spawned_store.config_path = "user://test_settings_panel_locale.cfg"
+		spawned_store.translation_dir = "res://data"
+		get_root().add_child(spawned_store)
+		lang_store = spawned_store
 	var sp_packed := load("res://scenes/ui/settings_panel.tscn") as PackedScene
 	var sp_inst := sp_packed.instantiate() as Control
 	get_root().add_child(sp_inst)
@@ -1485,8 +1779,20 @@ func _test_save_slots_panel_and_keybind_list() -> void:
 	var sys_sec := sp_inst.get_node_or_null("%SystemSection") as Control
 	var ctrl_sec := sp_inst.get_node_or_null("%ControlsSection") as Control
 	_assert(sys_sec != null and not sys_sec.visible and ctrl_sec != null and ctrl_sec.visible, "SettingsPanel switches between System and Controls tabs")
+	var lang := sp_inst.get_node_or_null("%LanguageOption") as OptionButton
+	var locale_count := 0
+	if lang_store != null:
+		var locales: Variant = lang_store.call("get_locales")
+		if locales is PackedStringArray or locales is Array:
+			locale_count = locales.size()
+	_assert(lang != null and locale_count > 0 and lang.item_count == locale_count, "SettingsPanel language options match SettingsStore locales")
 	get_root().remove_child(sp_inst)
 	sp_inst.free()
+	if spawned_store != null:
+		get_root().remove_child(spawned_store)
+		spawned_store.free()
+		if FileAccess.file_exists("user://test_settings_panel_locale.cfg"):
+			DirAccess.remove_absolute("user://test_settings_panel_locale.cfg")
 
 
 class MockCollector extends Node3D:
@@ -1594,3 +1900,115 @@ func _test_world_entity_primitives() -> void:
 	pool.queue_free()
 	bus.free()
 	host.free()
+
+
+func _test_gameplay_hud() -> void:
+	var stats := StatSet.new()
+	stats.define_stat(&"stamina", 100.0, 80.0)
+	var bar := StatBar.new()
+	bar.bind_stat(stats, &"stamina", "Stamina")
+	_assert(bar.get_value_text() == "80 / 100", "StatBar shows current and max")
+	_assert(is_equal_approx(bar.get_displayed_ratio(), 0.8), "StatBar ratio tracks StatSet")
+	stats.set_value(&"stamina", 25.0)
+	_assert(bar.get_value_text() == "25 / 100" and is_equal_approx(bar.get_displayed_ratio(), 0.25), "StatBar updates on stat_changed")
+	bar.unbind()
+	stats.set_value(&"stamina", 10.0)
+	_assert(bar.get_value_text() == "25 / 100", "StatBar ignores changes after unbind")
+	bar.free()
+
+	var health := HealthComponent.new()
+	health.max_hp = 40.0
+	var health_bar := StatBar.new()
+	health_bar.bind_health(health, "Health")
+	_assert(health_bar.get_value_text() == "40 / 40", "StatBar.bind_health reads HealthComponent")
+	health.apply_damage(15.0)
+	_assert(health_bar.get_value_text() == "25 / 40" and is_equal_approx(health_bar.get_displayed_ratio(), 25.0 / 40.0), "StatBar follows health damage")
+	health_bar.free()
+	health.free()
+
+	var router := get_root().get_node_or_null("InputRouter")
+	_assert(router != null, "InputRouter autoload available for inventory HUD")
+	var stack_before := int(router.call("get_stack_size")) if router != null else 0
+	var panel := InventoryPanel.new()
+	get_root().add_child(panel)
+	var inv := InventoryContainer.new(4, 99)
+	panel.bind_inventory(inv)
+	inv.add_item(&"ore", 3)
+	var rows := panel.get_row_texts()
+	_assert(rows.size() == 1 and rows[0] == "Ore x3", "InventoryPanel renders occupied slot rows")
+	_assert(_find_label_prefix(panel, "Empty slots") == "Empty slots: 3", "InventoryPanel counts empty slots from max_slots")
+	panel.set_open(true)
+	_assert(panel.is_open() and router != null and int(router.call("get_active_context")) == 1, "InventoryPanel open pushes UI context")
+	panel.toggle()
+	_assert(not panel.is_open() and router != null and int(router.call("get_stack_size")) == stack_before, "InventoryPanel close pops UI context")
+
+	var dropped: Array = []
+	panel.drop_requested.connect(func(item_id: StringName, amount: int) -> void: dropped.append([item_id, amount]))
+	var drop_btn: Button = null
+	for node in panel.find_children("*", "Button", true, false):
+		drop_btn = node as Button
+		break
+	_assert(drop_btn != null, "InventoryPanel row exposes a drop button")
+	if drop_btn != null:
+		drop_btn.pressed.emit()
+	_assert(dropped.size() == 1 and String(dropped[0][0]) == "ore" and int(dropped[0][1]) == 1, "InventoryPanel drop requests one item")
+	_assert(inv.count_item(&"ore") == 2, "InventoryPanel drop removes one item")
+	var ui := get_root().get_node_or_null("UIRouter")
+	if ui != null and ui.has_method("clear_toasts"):
+		ui.call("clear_toasts")
+	if panel.is_open():
+		panel.set_open(false)
+	get_root().remove_child(panel)
+	panel.free()
+
+	var tracker := QuestTracker.new()
+	var quests := QuestHud.new()
+	get_root().add_child(quests)
+	quests.bind_tracker(tracker)
+	tracker.register_quest(QuestDef.from_dict({
+		"id": "activate_beacons",
+		"title": "Link Beacons",
+		"objectives": [{
+			"id": "lit",
+			"type": "event",
+			"event": "beacon_lit_changed",
+			"description": "Light beacons",
+			"target": 3,
+		}],
+	}))
+	tracker.start_quest(&"activate_beacons")
+	var quest_text := "\n".join(quests.get_row_texts())
+	_assert("Link Beacons" in quest_text and "Light beacons 0/3" in quest_text, "QuestHud shows active objective")
+	tracker.handle_event(&"beacon_lit_changed", {})
+	quest_text = "\n".join(quests.get_row_texts())
+	_assert("Light beacons 1/3" in quest_text, "QuestHud updates objective progress")
+	tracker.handle_event(&"beacon_lit_changed", {})
+	tracker.handle_event(&"beacon_lit_changed", {})
+	quest_text = "\n".join(quests.get_row_texts())
+	_assert("COMPLETE" in quest_text, "QuestHud shows completion text")
+	quests.acknowledge_completion(&"activate_beacons")
+	_assert(not ("COMPLETE" in "\n".join(quests.get_row_texts())), "QuestHud.acknowledge_completion clears the completed row")
+	tracker.unbind()
+	get_root().remove_child(quests)
+	quests.free()
+
+	var hud_stats := StatSet.new()
+	hud_stats.define_stat(&"stamina", 100.0)
+	var hud_inv := InventoryContainer.new(2, 99)
+	var hud_tracker := QuestTracker.new()
+	var hud := GameplayHud.new()
+	get_root().add_child(hud)
+	hud.bind_player_hud(hud_stats, &"stamina", hud_inv, hud_tracker, "Stamina")
+	_assert(hud.stats_root.get_child_count() == 1, "GameplayHud hosts a stat bar")
+	_assert(hud.inventory != null and not hud.inventory.is_open(), "GameplayHud inventory starts closed")
+	_assert(hud.quests != null, "GameplayHud hosts the quest tracker")
+	get_root().remove_child(hud)
+	hud.free()
+
+
+func _find_label_prefix(root: Node, prefix: String) -> String:
+	for node in root.find_children("*", "Label", true, false):
+		var label := node as Label
+		if label != null and label.text.begins_with(prefix):
+			return label.text
+	return ""

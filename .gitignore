@@ -22,8 +22,10 @@ library/sfx/incoming/*
 # Godot
 godot/**/.godot/
 godot/**/*.import
+!godot/**/*.csv.import
 prototypes/**/.godot/
 prototypes/**/*.import
+!prototypes/**/*.csv.import
 
 # OS / IDE
 .DS_Store

@@ -93,10 +93,83 @@ func _run_all() -> void:
 	_assert(qt.is_completed(&"q_start") and flags.get_bool(&"q_done"), "QuestTracker + FlagStore work in starter")
 	qt.unbind()
 
+	var talk_flags := FlagStore.new()
+	var talk := DialogueRunner.new()
+	talk.bind(talk_flags, null, null, null)
+	var talk_view := talk.start(DialogueDef.from_dict({
+		"id": "hi",
+		"start": "a",
+		"nodes": [{
+			"id": "a",
+			"text": "Hello",
+			"effects": [{"type": "set_flag", "id": "spoke", "value": true}],
+		}],
+	}))
+	_assert(bool(talk_view.get("ok", false)) and talk_flags.get_bool(&"spoke"), "DialogueRunner sets a flag")
+	if ir != null:
+		var was_gameplay := bool(ir.call("is_gameplay_active"))
+		var box := DialogueBox.new()
+		get_root().add_child(box)
+		box.bind(talk_flags, null, null, null)
+		_assert(box.start(DialogueDef.from_dict({
+			"id": "box",
+			"start": "a",
+			"nodes": [{"id": "a", "speaker": "Guide", "text": "Ready"}],
+		})), "DialogueBox opens")
+		_assert(box.is_open() and not bool(ir.call("is_gameplay_active")), "DialogueBox pushes UI input context")
+		var close_btn := box.find_child("CloseButton", true, false) as Button
+		_assert(close_btn != null, "DialogueBox shows Close on a terminal line")
+		if close_btn != null:
+			close_btn.pressed.emit()
+		_assert(not box.is_open() and bool(ir.call("is_gameplay_active")) == was_gameplay, "Closing DialogueBox restores gameplay input")
+		box.free()
+
 	var hc := HealthComponent.new()
 	hc.max_hp = 30.0
 	_assert(is_equal_approx(hc.apply_damage(12.0), 12.0) and is_equal_approx(hc.get_hp(), 18.0), "HealthComponent works in starter")
+	var health_bar := StatBar.new()
+	health_bar.bind_health(hc, "Health")
+	_assert(health_bar.get_value_text() == "18 / 30", "StatBar follows HealthComponent in starter")
+	health_bar.free()
 	hc.free()
+
+	var stats_bar := StatBar.new()
+	stats_bar.bind_stat(stats, &"hp", "HP")
+	_assert(stats_bar.get_value_text() == "75 / 100", "StatBar follows StatSet in starter")
+	stats_bar.free()
+
+	if ir != null:
+		var stack_before := int(ir.call("get_stack_size"))
+		var panel := InventoryPanel.new()
+		get_root().add_child(panel)
+		panel.bind_inventory(inv)
+		var slot_rows := panel.get_row_texts()
+		_assert(slot_rows.size() == 1 and slot_rows[0] == "Coin x10", "InventoryPanel renders slot rows in starter")
+		panel.set_open(true)
+		_assert(int(ir.call("get_active_context")) == 1, "InventoryPanel pushes UI input context")
+		panel.set_open(false)
+		_assert(int(ir.call("get_stack_size")) == stack_before, "InventoryPanel pops UI input context")
+		get_root().remove_child(panel)
+		panel.free()
+
+	var quest_hud := QuestHud.new()
+	get_root().add_child(quest_hud)
+	var quest_tracker := QuestTracker.new()
+	quest_hud.bind_tracker(quest_tracker)
+	quest_tracker.register_quest(QuestDef.from_dict({
+		"id": "q_hud",
+		"title": "Starter Quest",
+		"objectives": [{"id": "step", "type": "event", "event": "starter_ping", "description": "Ping", "target": 1}],
+	}))
+	quest_tracker.start_quest(&"q_hud")
+	_assert("Ping 0/1" in "\n".join(quest_hud.get_row_texts()), "QuestHud shows objective progress")
+	quest_tracker.handle_event(&"starter_ping", {})
+	_assert("COMPLETE" in "\n".join(quest_hud.get_row_texts()), "QuestHud shows completion text")
+	quest_hud.acknowledge_completion(&"q_hud")
+	_assert(not ("COMPLETE" in "\n".join(quest_hud.get_row_texts())), "QuestHud completion can be acknowledged")
+	quest_tracker.unbind()
+	get_root().remove_child(quest_hud)
+	quest_hud.free()
 
 	var table_path := "user://starter_table.json"
 	var tf := FileAccess.open(table_path, FileAccess.WRITE)

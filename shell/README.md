@@ -36,6 +36,8 @@ uv run gu data validate path/to/data
 uv run gu data build path/to/data --out path/to/godot/data
 ```
 
+`gu data build` also writes `i18n_manifest.json` and a keep `.import` next to each localization CSV. The locale columns in those CSVs are the languages shown in Settings.
+
 ### SFX & BGM
 
 ```bash

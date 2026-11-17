@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 
 @dataclass
@@ -17,6 +18,8 @@ class DataValidationResult:
     errors: list[str] = field(default_factory=list)
     tables: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     localization_files: list[Path] = field(default_factory=list)
+    # Canonical locale columns shared by every localization CSV (hyphens become underscores).
+    localization_locales: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -41,7 +44,22 @@ def _is_localization_csv(path: Path, fieldnames: Sequence[str] | None = None) ->
     return False
 
 
-from typing import Sequence  # noqa: E402
+# Godot locale codes: en, zh, zh_CN, pt-BR. Hyphens are canonicalized to underscores.
+_LOCALE_RE = re.compile(r"^[A-Za-z]{2,3}([_-][A-Za-z0-9]+)*$")
+I18N_MANIFEST_NAME = "i18n_manifest.json"
+_KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
+
+
+def _canonical_locale(raw: str) -> str:
+    return raw.strip().replace("-", "_")
+
+
+def _choose_default_locale(locales: Sequence[str]) -> str:
+    if "en" in locales:
+        return "en"
+    if not locales:
+        return "en"
+    return sorted(locales)[0]
 
 
 def _coerce_value(raw: Any, expected_type: str) -> Any:
@@ -84,16 +102,32 @@ def _load_schema(table_path: Path) -> dict[str, Any]:
     return data
 
 
-def _validate_localization_csv(path: Path, rel: str, errors: list[str]) -> None:
+def _validate_localization_csv(path: Path, rel: str, errors: list[str]) -> tuple[list[str], set[str]]:
+    """Return canonical locale columns and translation keys for cross-file checks."""
     with path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames or reader.fieldnames[0].strip() != "keys":
             errors.append(f"{rel}: localization CSV first column must be 'keys'")
-            return
-        locales = [col for col in reader.fieldnames[1:] if col and col.strip()]
-        if not locales:
+            return [], set()
+        raw_locales = [col for col in reader.fieldnames[1:] if col and col.strip()]
+        if not raw_locales:
             errors.append(f"{rel}: localization CSV must define at least one locale column")
-            return
+            return [], set()
+
+        locales: list[str] = []
+        seen_locales: set[str] = set()
+        for col in raw_locales:
+            raw = col.strip()
+            if _LOCALE_RE.fullmatch(raw) is None:
+                errors.append(f"{rel}: invalid locale column '{raw}'")
+                continue
+            canon = _canonical_locale(raw)
+            if canon in seen_locales:
+                errors.append(f"{rel}: duplicate locale column '{raw}'")
+                continue
+            seen_locales.add(canon)
+            locales.append(canon)
+
         seen_keys: set[str] = set()
         for row_idx, row in enumerate(reader, start=2):
             key = str(row.get("keys") or "").strip()
@@ -103,10 +137,42 @@ def _validate_localization_csv(path: Path, rel: str, errors: list[str]) -> None:
             if key in seen_keys:
                 errors.append(f"{rel}:{row_idx}: duplicate translation key '{key}'")
             seen_keys.add(key)
-            for loc in locales:
+            for loc in raw_locales:
                 val = row.get(loc)
                 if val is None or str(val).strip() == "":
                     errors.append(f"{rel}:{row_idx}: missing '{loc}' translation for key '{key}'")
+        return locales, seen_keys
+
+
+def _cross_check_localization(
+    entries: Sequence[tuple[str, list[str], set[str]]],
+    errors: list[str],
+) -> list[str]:
+    """Require one locale set and unique keys across every localization CSV.
+
+    Locale order in the returned list follows the first file. ``default_locale``
+    is chosen separately (``en`` when present, otherwise the sorted first code).
+    """
+    if not entries:
+        return []
+    reference_rel, reference_locales, _reference_keys = entries[0]
+    ref_set = set(reference_locales)
+    owner: dict[str, str] = {}
+    for rel, locales, keys in entries:
+        if set(locales) != ref_set:
+            errors.append(
+                f"{rel}: locale columns [{', '.join(locales)}] differ from "
+                f"{reference_rel} [{', '.join(reference_locales)}]"
+            )
+        for key in sorted(keys):
+            previous = owner.get(key)
+            if previous is not None and previous != rel:
+                errors.append(
+                    f"{rel}: duplicate translation key '{key}' also defined in {previous}"
+                )
+            else:
+                owner[key] = rel
+    return list(reference_locales)
 
 
 def _validate_rows(
@@ -154,10 +220,12 @@ def validate_data_dir(src_dir: Path) -> DataValidationResult:
         result.errors.append(f"Data directory not found: {root}")
         return result
 
+    localization_entries: list[tuple[str, list[str], set[str]]] = []
+
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        if path.name.endswith(".schema.json"):
+        if path.name.endswith(".schema.json") or path.name == I18N_MANIFEST_NAME:
             continue
         rel = path.relative_to(root).as_posix()
         ext = path.suffix.lower()
@@ -178,7 +246,8 @@ def validate_data_dir(src_dir: Path) -> DataValidationResult:
                 fieldnames = list(reader.fieldnames or [])
                 if _is_localization_csv(path, fieldnames):
                     result.localization_files.append(path)
-                    _validate_localization_csv(path, rel, result.errors)
+                    locales, keys = _validate_localization_csv(path, rel, result.errors)
+                    localization_entries.append((rel, locales, keys))
                     continue
                 raw_rows = [dict(r) for r in reader]
             result.tables[rel] = _validate_rows(raw_rows, schema, rel, result.errors)
@@ -197,6 +266,7 @@ def validate_data_dir(src_dir: Path) -> DataValidationResult:
                 continue
             result.tables[rel] = _validate_rows(raw_rows, schema, rel, result.errors)
 
+    result.localization_locales = _cross_check_localization(localization_entries, result.errors)
     return result
 
 
@@ -234,9 +304,28 @@ def build_data_dir(
     for loc_path in val.localization_files:
         rel_path = loc_path.relative_to(val.src_dir)
         out_path = dest_root / rel_path
+        import_rel = f"{rel_path.as_posix()}.import"
         res.written_files.append(rel_path.as_posix())
+        res.written_files.append(import_rel)
         if not dry_run:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(loc_path, out_path)
+            out_path.with_name(out_path.name + ".import").write_text(_KEEP_IMPORT, encoding="utf-8")
+
+    if val.localization_files:
+        manifest_rel = I18N_MANIFEST_NAME
+        res.written_files.append(manifest_rel)
+        if not dry_run:
+            dest_root.mkdir(parents=True, exist_ok=True)
+            manifest = {
+                "version": 1,
+                "default_locale": _choose_default_locale(val.localization_locales),
+                "locales": list(val.localization_locales),
+                "files": [path.relative_to(val.src_dir).as_posix() for path in val.localization_files],
+            }
+            (dest_root / manifest_rel).write_text(
+                json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
 
     return res

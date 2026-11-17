@@ -15,7 +15,6 @@ from game_utils_audio.paths import (
 
 DEFAULT_ADDONS: tuple[str, ...] = ("gu_core", "gu_gameplay")
 SKIP_FILENAMES = {".DS_Store"}
-SKIP_SUFFIXES = {".import", ".uid"}
 
 
 @dataclass
@@ -42,7 +41,11 @@ class InitProjectResult:
 def _should_skip_source(path: Path) -> bool:
     if path.name in SKIP_FILENAMES:
         return True
-    if path.suffix.lower() in SKIP_SUFFIXES:
+    suffix = path.suffix.lower()
+    if suffix == ".uid":
+        return True
+    # Keep editor metadata local, but ship localization CSV keep-imports with the template.
+    if suffix == ".import" and not path.name.lower().endswith(".csv.import"):
         return True
     return False
 

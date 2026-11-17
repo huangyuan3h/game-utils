@@ -49,6 +49,31 @@ func has_item(item_id: StringName, amount: int = 1) -> bool:
 	return count_item(item_id) >= amount
 
 
+func can_add(item_id: StringName, amount: int) -> bool:
+	## Read-only check that `amount` items would fit under the current slot and stack caps.
+	if amount <= 0:
+		return true
+	if item_id == &"":
+		return false
+	var remaining := amount
+	var stack_cap := get_max_stack(item_id)
+	for slot in _slots:
+		if remaining <= 0:
+			break
+		if slot["id"] != item_id:
+			continue
+		var space := stack_cap - int(slot["count"])
+		if space > 0:
+			remaining -= mini(space, remaining)
+	if remaining <= 0:
+		return true
+	var free_slots := 1 << 30
+	if max_slots > 0:
+		free_slots = maxi(0, max_slots - _slots.size())
+	var needed := int(ceil(float(remaining) / float(stack_cap)))
+	return needed <= free_slots
+
+
 func get_slot_count() -> int:
 	return _slots.size()
 

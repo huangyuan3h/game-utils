@@ -7,7 +7,7 @@ Shared Godot 4.6 game skeleton, reusable gameplay addons, and Python asset/engin
 | Path | Purpose |
 |------|---------|
 | `godot/addons/gu_core/` | Core runtime plugin: `GameFlow`, `UIRouter` (Toast / Modal / Transition / SaveSlots / KeybindList), `InputRouter` (stack + rebinding), `AudioManager` (3D SFX pool), `SaveService` (Saveables + migrations + `.bak`), `SettingsStore`, `EventBus`, `PoolService`, `SceneLoader`, `DataTableLoader`, `GuLog`, `DevConsole` |
-| `godot/addons/gu_gameplay/` | Reusable gameplay plugin: `Interactable` / `Interactor`, `CameraRig`, `CharacterAction*`, `SurfaceResolver` / `SurfaceAudioBank`, `StatSet`, `InventoryContainer` / `ItemDef`, `FlagStore` / `QuestTracker`, `HealthComponent` / `WorldPickup` / `ResourceNode` |
+| `godot/addons/gu_gameplay/` | Reusable gameplay plugin: `Interactable` / `Interactor`, `CameraRig`, `CharacterAction*`, `SurfaceResolver` / `SurfaceAudioBank`, `StatSet`, `InventoryContainer` / `ItemDef`, `FlagStore` / `QuestTracker`, `DialogueDef` / `DialogueRunner` / `DialogueBox`, `HealthComponent` / `WorldPickup` / `ResourceNode` |
 | `godot/templates/starter/` | Full Godot 4.6 starter template scaffolded by `gu init` |
 | `prototypes/walk-sandbox/` | Reference 3D sandbox integrating procedural terrain, weather, beacons, quests, resource harvesting, and full UI |
 | `shell/` | Unified Python CLI (`gu` / `gu-audio`) for SFX/BGM, asset sync & audit, data pipelines, starter scaffolding, and CI checks |

@@ -8,6 +8,9 @@ const ACTION_BINDINGS := {
 	"action_chop": &"chop",
 	"action_build": &"build",
 }
+const STAMINA_MAX := 100.0
+const STAMINA_SPRINT_DRAIN := 20.0
+const STAMINA_REGEN := 15.0
 
 @onready var _visual_root: Node3D = $VisualRoot
 @onready var _label: Label3D = $NameLabel
@@ -21,6 +24,7 @@ var _run_mode: bool = false
 var _locomotion := CharacterLocomotion.new()
 var _actions := CharacterActionController.new()
 var _inventory := InventoryContainer.new(16, 99)
+var _stats := StatSet.new()
 var _visual: CharacterVisual
 var _audio: CharacterAudio
 var _head_light: NightHeadlight
@@ -28,6 +32,7 @@ var _interactor: Interactor
 
 
 func _ready() -> void:
+	_stats.define_stat(&"stamina", STAMINA_MAX)
 	_ensure_input_map()
 	collision_mask = 0
 	collision_layer = 0
@@ -80,6 +85,10 @@ func get_inventory() -> InventoryContainer:
 	return _inventory
 
 
+func get_stats() -> StatSet:
+	return _stats
+
+
 func get_locomotion() -> CharacterLocomotion:
 	return _locomotion
 
@@ -130,6 +139,8 @@ func _physics_process(delta: float) -> void:
 	var move_scale := float(action_frame.get("move_scale", 1.0))
 	var facing_override := float(action_frame.get("facing_override_yaw", 0.0)) if bool(action_frame.get("has_facing_override", false)) else NAN
 
+	var moving := input_dir.length_squared() > 0.0001
+	_tick_stamina(delta, moving)
 	var result := _locomotion.step(global_position, velocity, input_dir, _run_mode, terrain, delta, move_scale, facing_override)
 	velocity = result["velocity"] as Vector3
 	global_position = result["position"] as Vector3
@@ -208,6 +219,21 @@ func _apply_action_beat_to_nearby_resource(action_id: StringName) -> void:
 				best = rn
 	if best != null:
 		best.apply_harvest_hit(self)
+
+
+func _tick_stamina(delta: float, moving: bool) -> void:
+	# Sprint spends stamina. Walking and standing still regenerate it.
+	# Locomotion speed constants stay unchanged; an empty bar only drops run mode.
+	var sprinting := _run_mode and moving
+	if sprinting and _stats.get_value(&"stamina") <= 0.05:
+		_run_mode = false
+		sprinting = false
+	if sprinting:
+		_stats.modify_value(&"stamina", -STAMINA_SPRINT_DRAIN * delta)
+		if _stats.get_value(&"stamina") <= 0.05:
+			_run_mode = false
+	else:
+		_stats.modify_value(&"stamina", STAMINA_REGEN * delta)
 
 
 func _is_gameplay_input_allowed() -> bool:

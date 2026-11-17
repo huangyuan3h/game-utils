@@ -9,6 +9,16 @@ extends Control
 @onready var _keybind_list: KeybindList = get_node_or_null("%KeybindList") as KeybindList
 @onready var _reset_keys_btn: Button = get_node_or_null("%ResetKeysButton") as Button
 
+@onready var _audio_label: Label = get_node_or_null("%AudioSectionLabel") as Label
+@onready var _master_label: Label = get_node_or_null("%MasterLabel") as Label
+@onready var _sfx_label: Label = get_node_or_null("%SfxLabel") as Label
+@onready var _amb_label: Label = get_node_or_null("%AmbienceLabel") as Label
+@onready var _bgm_label: Label = get_node_or_null("%BgmLabel") as Label
+@onready var _system_label: Label = get_node_or_null("%SystemSectionLabel") as Label
+@onready var _language_label: Label = get_node_or_null("%LanguageLabel") as Label
+@onready var _language_option: OptionButton = get_node_or_null("%LanguageOption") as OptionButton
+@onready var _controls_hint: Label = get_node_or_null("%ControlsHint") as Label
+
 @onready var _master_slider: HSlider = %MasterSlider
 @onready var _master_val: Label = %MasterValue
 @onready var _sfx_slider: HSlider = %SfxSlider
@@ -23,6 +33,7 @@ extends Control
 @onready var _back_btn: Button = %BackButton
 
 var _syncing: bool = false
+var _locale_codes: PackedStringArray = PackedStringArray()
 
 
 func _ready() -> void:
@@ -32,6 +43,8 @@ func _ready() -> void:
 	_bgm_slider.value_changed.connect(func(v: float) -> void: _on_slider("bgm_volume", v, _bgm_val))
 	_debug_check.toggled.connect(func(on: bool) -> void: _on_toggle("show_debug_hud", on))
 	_fullscreen_check.toggled.connect(func(on: bool) -> void: _on_toggle("fullscreen", on))
+	if _language_option != null:
+		_language_option.item_selected.connect(_on_language_selected)
 	_reset_btn.pressed.connect(_on_reset)
 	_back_btn.pressed.connect(_on_back)
 	if _system_tab_btn != null:
@@ -43,11 +56,18 @@ func _ready() -> void:
 	ProtossUiFx.attach_tree(self, [_back_btn])
 	show_tab("system")
 	_sync_from_store()
+	_refresh_texts()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_refresh_texts()
 
 
 func on_ui_enter(_params: Dictionary = {}) -> void:
 	show_tab("system")
 	_sync_from_store()
+	_refresh_texts()
 	if _keybind_list != null:
 		_keybind_list.rebuild()
 	ProtossUiFx.animate_panel_enter(_panel, self, true)
@@ -78,7 +98,54 @@ func _sync_from_store() -> void:
 	_set_slider(_bgm_slider, _bgm_val, float(store.call("get_value", "bgm_volume", 0.75)))
 	_debug_check.button_pressed = bool(store.call("get_value", "show_debug_hud", true))
 	_fullscreen_check.button_pressed = bool(store.call("get_value", "fullscreen", false))
+	_fill_language_option(store)
 	_syncing = false
+
+
+func _refresh_texts() -> void:
+	_set_tr(_system_tab_btn, "SETTINGS_TAB_SYSTEM")
+	_set_tr(_controls_tab_btn, "SETTINGS_TAB_CONTROLS")
+	_set_tr(_audio_label, "SETTINGS_AUDIO")
+	_set_tr(_master_label, "SETTINGS_MASTER")
+	_set_tr(_sfx_label, "SETTINGS_SFX")
+	_set_tr(_amb_label, "SETTINGS_AMBIENCE")
+	_set_tr(_bgm_label, "SETTINGS_BGM")
+	_set_tr(_system_label, "SETTINGS_SYSTEM")
+	_set_tr(_language_label, "SETTINGS_LANGUAGE")
+	_set_tr(_debug_check, "SETTINGS_DEBUG_HUD")
+	_set_tr(_fullscreen_check, "SETTINGS_FULLSCREEN")
+	_set_tr(_controls_hint, "SETTINGS_KEYBINDS")
+	_set_tr(_reset_keys_btn, "SETTINGS_RESET_KEYS")
+	_set_tr(_reset_btn, "SETTINGS_RESET")
+	_set_tr(_back_btn, "SETTINGS_BACK")
+
+
+func _set_tr(node: Node, key: String) -> void:
+	if node == null or not ("text" in node):
+		return
+	node.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	node.text = tr(key)
+
+
+func _fill_language_option(store: Node) -> void:
+	if _language_option == null:
+		return
+	_language_option.clear()
+	_locale_codes = PackedStringArray()
+	var locales: Variant = store.call("get_locales")
+	var current := str(store.call("get_value", "locale", "en"))
+	var select_idx := 0
+	var index := 0
+	if locales is Array or locales is PackedStringArray:
+		for code_v in locales:
+			var code := str(code_v)
+			_locale_codes.append(code)
+			_language_option.add_item(str(store.call("locale_label", code)))
+			if code == current:
+				select_idx = index
+			index += 1
+	if not _locale_codes.is_empty():
+		_language_option.select(select_idx)
 
 
 func _set_slider(slider: HSlider, label: Label, v: float) -> void:
@@ -103,11 +170,20 @@ func _on_toggle(key: String, enabled: bool) -> void:
 		store.call("set_value", key, enabled)
 
 
+func _on_language_selected(index: int) -> void:
+	if _syncing or index < 0 or index >= _locale_codes.size():
+		return
+	var store := get_node_or_null("/root/SettingsStore")
+	if store != null:
+		store.call("set_value", "locale", _locale_codes[index])
+
+
 func _on_reset() -> void:
 	var store := get_node_or_null("/root/SettingsStore")
 	if store != null:
 		store.call("reset_defaults")
 		_sync_from_store()
+		_refresh_texts()
 
 
 func _on_reset_keys() -> void:

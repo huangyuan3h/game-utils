@@ -24,11 +24,13 @@ var _resource_nodes: Array[ResourceNode] = []
 var _focused_interactable: Interactable = null
 var _flags := FlagStore.new()
 var _quests := QuestTracker.new()
+var _dialogue_box: DialogueBox = null
 
 
 func _ready() -> void:
 	_register_ui_screens()
 	_setup_quests()
+	_setup_dialogue()
 	# Wait one frame so TerrainMap._ready has built the initial landscape
 	await get_tree().process_frame
 	if _player.has_method("set_context"):
@@ -37,10 +39,7 @@ func _ready() -> void:
 		var interactor := _player.call("get_interactor") as Interactor
 		if interactor != null and not interactor.focus_changed.is_connected(_on_interactor_focus_changed):
 			interactor.focus_changed.connect(_on_interactor_focus_changed)
-	if _player.has_method("get_inventory"):
-		var inv := _player.call("get_inventory") as InventoryContainer
-		if inv != null and not inv.inventory_changed.is_connected(_refresh_overlay):
-			inv.inventory_changed.connect(_refresh_overlay)
+	_setup_gameplay_hud()
 	if _sky_time != null and _sky_time.has_method("set_context"):
 		_sky_time.call("set_context", _terrain, _player)
 	if _camera_rig != null:
@@ -100,6 +99,8 @@ func start_new_world(opts: Dictionary = {}) -> void:
 		var inv := _player.call("get_inventory") as InventoryContainer
 		if inv != null:
 			inv.clear()
+	if _dialogue_box != null and _dialogue_box.is_open():
+		_dialogue_box.close()
 	_quests.apply_state({"active": {}, "completed": []})
 	_quests.start_quest(&"activate_beacons")
 	if opts.has("landform"):
@@ -178,14 +179,18 @@ func _register_ui_screens() -> void:
 
 func _setup_quests() -> void:
 	_quests.register_quest(WorldSpawner.create_beacon_quest())
-	_quests.bind(get_node_or_null("/root/EventBus"), _flags)
+	_quests.register_quest(WorldSpawner.create_gather_wood_quest())
+	_quests.bind(get_node_or_null("/root/EventBus"), _flags, _player_inventory())
 	_quests.start_quest(&"activate_beacons")
 	_quests.quest_completed.connect(func(qid: StringName) -> void:
 		GuLog.info("Quests", "Completed quest: %s" % String(qid))
 		var ui := get_node_or_null("/root/UIRouter")
 		var flow := get_node_or_null("/root/GameFlow")
 		if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
-			ui.call("show_toast", "QUEST COMPLETE: Activate Sector Beacons", 3.0, &"success")
+			var title := str(_quests.get_quest_status(qid).get("title", String(qid)))
+			if title == "":
+				title = String(qid)
+			ui.call("show_toast", "QUEST COMPLETE: %s" % title, 3.0, &"success")
 		_refresh_overlay()
 	)
 	var save_svc := get_node_or_null("/root/SaveService")
@@ -235,6 +240,25 @@ func _rebuild_world_entities() -> void:
 		_resource_nodes
 	)
 	_pending_resource_states.clear()
+	WorldSpawner.spawn_elder(_markers_root, _terrain, _player.global_position)
+
+
+func _setup_dialogue() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "DialogueLayer"
+	layer.layer = 40
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+	_dialogue_box = DialogueBox.new()
+	_dialogue_box.name = "DialogueBox"
+	layer.add_child(_dialogue_box)
+	_dialogue_box.bind(_flags, _quests, _player_inventory(), get_node_or_null("/root/EventBus"))
+
+
+func _player_inventory() -> InventoryContainer:
+	if _player != null and _player.has_method("get_inventory"):
+		return _player.call("get_inventory") as InventoryContainer
+	return null
 
 
 func _on_beacon_lit_changed(beacon: WorldBeacon, lit: bool) -> void:
@@ -314,6 +338,33 @@ func _clamp_player_to_map() -> void:
 	_player.global_position = p
 
 
+func _quest_line(quest_id: StringName, label: String) -> String:
+	var status := _quests.get_quest_status(quest_id)
+	var state := str(status.get("state", "inactive"))
+	if state == "completed":
+		return "%s: COMPLETE" % label
+	if state == "active":
+		var objectives: Array = status.get("objectives", []) as Array
+		if not objectives.is_empty() and objectives[0] is Dictionary:
+			var objective := objectives[0] as Dictionary
+			return "%s: %d/%d" % [label, int(objective.get("current", 0)), int(objective.get("target", 1))]
+		return "%s: ACTIVE" % label
+	return "%s: READY" % label
+
+
+func _setup_gameplay_hud() -> void:
+	if _player == null or not _player.has_method("get_stats") or not _player.has_method("get_inventory"):
+		return
+	var stats := _player.call("get_stats") as StatSet
+	var inv := _player.call("get_inventory") as InventoryContainer
+	if stats == null or inv == null:
+		return
+	var hud := GameplayHud.new()
+	hud.name = "GameplayHud"
+	add_child(hud)
+	hud.bind_player_hud(stats, &"stamina", inv, _quests, "Stamina")
+
+
 func _refresh_overlay() -> void:
 	if _debug_overlay == null:
 		return
@@ -322,23 +373,8 @@ func _refresh_overlay() -> void:
 		if is_instance_valid(b) and b.is_lit:
 			lit_spots.append("Spot %d" % b.beacon_index)
 	_debug_overlay.set_reached_spots(lit_spots)
-	var qstatus := _quests.get_quest_status(&"activate_beacons")
-	var qstate := str(qstatus.get("state", "inactive"))
-	if qstate == "completed":
-		_debug_overlay.set_quest_summary("LINK QUEST: COMPLETE")
-	elif qstate == "active":
-		var objs := qstatus.get("objectives", []) as Array
-		if not objs.is_empty():
-			var o0 := objs[0] as Dictionary
-			_debug_overlay.set_quest_summary("LINK QUEST: %d/%d" % [int(o0["current"]), int(o0["target"])])
-
-	if _player.has_method("get_inventory"):
-		var inv := _player.call("get_inventory") as InventoryContainer
-		if inv != null:
-			var ore := inv.count_item(&"ore")
-			var wood := inv.count_item(&"wood")
-			if ore > 0 or wood > 0:
-				_debug_overlay.set_inventory_summary("BAG Ore:%d Wood:%d" % [ore, wood])
-			else:
-				_debug_overlay.set_inventory_summary("")
+	_debug_overlay.set_quest_summary("%s  |  %s" % [
+		_quest_line(&"activate_beacons", "LINK"),
+		_quest_line(&"gather_wood", "TIMBER"),
+	])
 	_debug_overlay.refresh()

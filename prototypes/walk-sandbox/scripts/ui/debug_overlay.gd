@@ -16,8 +16,6 @@ var _sky_time: Node = null
 var _camera_rig: CameraRig = null
 var _landform_mode: int = -1
 var _reached_spots: Array[String] = []
-var _quest_summary: String = ""
-var _inventory_summary: String = ""
 var _hud_enabled: bool = true
 
 
@@ -39,14 +37,6 @@ func set_landform_mode(mode: int) -> void:
 
 func set_reached_spots(spots: Array[String]) -> void:
 	_reached_spots = spots
-
-
-func set_quest_summary(summary: String) -> void:
-	_quest_summary = summary
-
-
-func set_inventory_summary(summary: String) -> void:
-	_inventory_summary = summary
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -110,12 +100,7 @@ func refresh() -> void:
 				tokens.append("◆%d" % i)
 			else:
 				tokens.append("◇%d" % i)
-		var line := "  ".join(tokens)
-		if _quest_summary != "":
-			line += "  |  " + _quest_summary
-		if _inventory_summary != "":
-			line += "  |  " + _inventory_summary
-		_beacons_label.text = line
+		_beacons_label.text = "  ".join(tokens)
 
 
 func _sync_with_settings() -> void:
