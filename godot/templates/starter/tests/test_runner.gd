@@ -79,6 +79,20 @@ func _run_all() -> void:
 	var inv := InventoryContainer.new()
 	_assert(inv.add_item(&"coin", 10) == 0 and inv.count_item(&"coin") == 10, "InventoryContainer works in starter")
 
+	var flags := FlagStore.new()
+	var qt := QuestTracker.new()
+	qt.bind(bus, flags, inv)
+	qt.register_quest(QuestDef.from_dict({
+		"id": "q_start",
+		"objectives": [{"id": "ping", "type": "event", "event": "starter_ping", "target": 1}],
+		"rewards": [{"type": "flag", "id": "q_done", "value": true}],
+	}))
+	qt.start_quest(&"q_start")
+	if bus != null:
+		bus.call("emit_event", &"starter_ping", {})
+	_assert(qt.is_completed(&"q_start") and flags.get_bool(&"q_done"), "QuestTracker + FlagStore work in starter")
+	qt.unbind()
+
 	var table_path := "user://starter_table.json"
 	var tf := FileAccess.open(table_path, FileAccess.WRITE)
 	tf.store_string('{"rows":[{"id":"potion","val":20}]}')

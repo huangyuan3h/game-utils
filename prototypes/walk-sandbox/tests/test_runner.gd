@@ -124,6 +124,7 @@ func _run_all() -> void:
 	_test_save_migrations_and_backup()
 	_test_pool_service_and_scene_loader()
 	_test_input_rebinding_and_dev_console()
+	_test_flags_and_quest_tracker()
 
 
 func _test_map_data_and_generator() -> void:
@@ -1277,3 +1278,106 @@ func _test_input_rebinding_and_dev_console() -> void:
 	store2.free()
 	if FileAccess.file_exists(tmp_cfg):
 		DirAccess.remove_absolute(tmp_cfg)
+
+
+func _test_flags_and_quest_tracker() -> void:
+	var flags := FlagStore.new()
+	var flag_events := [0]
+	flags.flag_changed.connect(func(_id: StringName, _old_v: Variant, _new_v: Variant) -> void: flag_events[0] += 1)
+
+	flags.set_flag(&"met_elder", true)
+	_assert(flags.get_bool(&"met_elder"), "FlagStore stores boolean flags")
+	_assert(flags.inc_counter(&"beacons_lit", 2) == 2, "FlagStore.inc_counter increments integer counters")
+	_assert(flag_events[0] == 2, "FlagStore emits flag_changed on mutations")
+
+	var bus := EventBusScript.new()
+	var inv := InventoryContainer.new()
+	var stats := StatSet.new()
+	stats.define_stat(&"xp", 1000.0, 0.0)
+
+	var tracker := QuestTracker.new()
+	tracker.bind(bus, flags, inv, stats)
+
+	var loaded_count := tracker.register_from_rows([
+		{
+			"id": "sector_trial",
+			"title": "Sector Trial",
+			"objectives": [
+				{"id": "beacons", "type": "event", "event": "beacon_lit_changed", "filter": {"lit": true}, "target": 2},
+				{"id": "gather_wood", "type": "inventory_count", "item_id": "wood", "target": 3},
+				{"id": "flag_ready", "type": "flag", "flag_id": "met_elder", "flag_value": true, "target": 1},
+			],
+			"rewards": [
+				{"type": "item", "id": "coin", "amount": 10},
+				{"type": "stat", "id": "xp", "delta": 50.0},
+				{"type": "flag", "id": "trial_done", "value": true},
+			],
+		},
+	])
+	_assert(loaded_count == 1, "QuestTracker.register_from_rows registers DataTableLoader-style rows")
+	_assert(tracker.start_quest(&"sector_trial"), "QuestTracker starts registered quest")
+
+	# Non-matching filter should not advance beacon objective
+	bus.emit_event(&"beacon_lit_changed", {"lit": false})
+	var st1 := tracker.get_quest_status(&"sector_trial")
+	_assert(int((st1["objectives"][0] as Dictionary)["current"]) == 0, "QuestTracker ignores events failing filter")
+
+	# Matching event advances objective
+	bus.emit_event(&"beacon_lit_changed", {"lit": true})
+	var st2 := tracker.get_quest_status(&"sector_trial")
+	_assert(int((st2["objectives"][0] as Dictionary)["current"]) == 1, "QuestTracker advances event objective via EventBus")
+
+	# SaveService round-trip while quest is in progress
+	var tmp_dir := "user://test_saves_quests"
+	var svc := SaveServiceScript.new()
+	svc.save_dir = tmp_dir
+	svc.register_saveable("flags", flags)
+	svc.register_saveable("quests", tracker)
+	var err := svc.save_slot("quest_slot", {"world": {"seed": 77}})
+	_assert(err == OK, "SaveService persists FlagStore + QuestTracker saveables")
+
+	var loaded := svc.load_slot("quest_slot")
+	_assert(bool(loaded.get("ok", false)), "SaveService loads quest save slot")
+
+	var flags2 := FlagStore.new()
+	var inv2 := InventoryContainer.new()
+	var stats2 := StatSet.new()
+	stats2.define_stat(&"xp", 1000.0, 0.0)
+	var tracker2 := QuestTracker.new()
+	tracker2.register_from_rows([
+		{
+			"id": "sector_trial",
+			"title": "Sector Trial",
+			"objectives": [
+				{"id": "beacons", "type": "event", "event": "beacon_lit_changed", "filter": {"lit": true}, "target": 2},
+				{"id": "gather_wood", "type": "inventory_count", "item_id": "wood", "target": 3},
+				{"id": "flag_ready", "type": "flag", "flag_id": "met_elder", "flag_value": true, "target": 1},
+			],
+			"rewards": [
+				{"type": "item", "id": "coin", "amount": 10},
+				{"type": "stat", "id": "xp", "delta": 50.0},
+				{"type": "flag", "id": "trial_done", "value": true},
+			],
+		},
+	])
+	tracker2.bind(bus, flags2, inv2, stats2)
+	flags2.apply_state((loaded["data"] as Dictionary).get("flags", {}) as Dictionary)
+	tracker2.apply_state((loaded["data"] as Dictionary).get("quests", {}) as Dictionary)
+	var st_restored := tracker2.get_quest_status(&"sector_trial")
+	_assert(tracker2.is_active(&"sector_trial") and int((st_restored["objectives"][0] as Dictionary)["current"]) == 1, "Restored QuestTracker keeps partial progress")
+
+	# Finish remaining objectives -> verify completion + rewards
+	inv2.add_item(&"wood", 3)
+	bus.emit_event(&"beacon_lit_changed", {"lit": true})
+	_assert(tracker2.is_completed(&"sector_trial"), "Quest completes once all event + inventory + flag objectives meet target")
+	_assert(inv2.count_item(&"coin") == 10, "Quest completion grants item reward to InventoryContainer")
+	_assert(is_equal_approx(stats2.get_value(&"xp"), 50.0), "Quest completion grants stat reward to StatSet")
+	_assert(flags2.get_bool(&"trial_done"), "Quest completion sets reward flag in FlagStore")
+
+	tracker.unbind()
+	tracker2.unbind()
+	svc.delete_slot("quest_slot")
+	if DirAccess.dir_exists_absolute(tmp_dir):
+		DirAccess.remove_absolute(tmp_dir)
+	svc.free()
+	bus.free()

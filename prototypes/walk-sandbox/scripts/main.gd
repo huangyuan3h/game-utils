@@ -30,10 +30,13 @@ var _pending_spawn_override: Dictionary = {}
 var _pending_lit_beacon_ids: Array[String] = []
 var _beacons: Array[WorldBeacon] = []
 var _focused_interactable: Interactable = null
+var _flags := FlagStore.new()
+var _quests := QuestTracker.new()
 
 
 func _ready() -> void:
 	_register_ui_screens()
+	_setup_quests()
 	# Wait one frame so TerrainMap._ready has built the initial landscape
 	await get_tree().process_frame
 	if _player.has_method("set_context"):
@@ -74,9 +77,20 @@ func _process(_delta: float) -> void:
 	_refresh_overlay()
 
 
+func _exit_tree() -> void:
+	_quests.unbind()
+	var save_svc := get_node_or_null("/root/SaveService")
+	if save_svc != null and save_svc.has_method("unregister_saveable"):
+		save_svc.call("unregister_saveable", "flags")
+		save_svc.call("unregister_saveable", "quests")
+
+
 func start_new_world(opts: Dictionary = {}) -> void:
 	_pending_spawn_override.clear()
 	_pending_lit_beacon_ids.clear()
+	_flags.clear()
+	_quests.apply_state({"active": {}, "completed": []})
+	_quests.start_quest(&"activate_beacons")
 	if opts.has("landform"):
 		_landform_mode = int(opts["landform"])
 		if _debug_overlay != null:
@@ -339,4 +353,49 @@ func _refresh_overlay() -> void:
 		if is_instance_valid(b) and b.is_lit:
 			lit_spots.append("Spot %d" % b.beacon_index)
 	_debug_overlay.set_reached_spots(lit_spots)
+	var qstatus := _quests.get_quest_status(&"activate_beacons")
+	var qstate := str(qstatus.get("state", "inactive"))
+	if qstate == "completed":
+		_debug_overlay.set_quest_summary("LINK QUEST: COMPLETE")
+	elif qstate == "active":
+		var objs := qstatus.get("objectives", []) as Array
+		if not objs.is_empty():
+			var o0 := objs[0] as Dictionary
+			_debug_overlay.set_quest_summary("LINK QUEST: %d/%d" % [int(o0["current"]), int(o0["target"])])
 	_debug_overlay.refresh()
+
+
+func _setup_quests() -> void:
+	var def := QuestDef.from_dict({
+		"id": "activate_beacons",
+		"title": "Activate Sector Beacons",
+		"description": "Light 3 world beacons to stabilize the sector.",
+		"objectives": [
+			{
+				"id": "light_3",
+				"description": "Light 3 beacons",
+				"type": "event",
+				"event": "beacon_lit_changed",
+				"filter": {"lit": true},
+				"target": 3,
+			},
+		],
+		"rewards": [
+			{"type": "flag", "id": "sector_linked", "value": true},
+		],
+	})
+	_quests.register_quest(def)
+	_quests.bind(get_node_or_null("/root/EventBus"), _flags)
+	_quests.start_quest(&"activate_beacons")
+	_quests.quest_completed.connect(func(qid: StringName) -> void:
+		GuLog.info("Quests", "Completed quest: %s" % String(qid))
+		var ui := get_node_or_null("/root/UIRouter")
+		var flow := get_node_or_null("/root/GameFlow")
+		if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
+			ui.call("show_toast", "QUEST COMPLETE: Activate Sector Beacons", 3.0, &"success")
+		_refresh_overlay()
+	)
+	var save_svc := get_node_or_null("/root/SaveService")
+	if save_svc != null and save_svc.has_method("register_saveable"):
+		save_svc.call("register_saveable", "flags", _flags)
+		save_svc.call("register_saveable", "quests", _quests)
