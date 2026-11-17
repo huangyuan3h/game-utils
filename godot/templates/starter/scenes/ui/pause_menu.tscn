@@ -92,6 +92,12 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "SAVE"
 
+[node name="SlotsButton" type="Button" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "SAVE / LOAD SLOTS"
+
 [node name="SettingsButton" type="Button" parent="Center/Panel/VBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 42)

@@ -1,47 +1,30 @@
 # Walk Sandbox
 
-Minimal Godot 4.6 prototype for natural on-foot movement.
+Reference Godot 4.6 3D prototype integrating `gu_core` and `gu_gameplay` on top of procedural terrain, weather, locomotion, quests, and resource harvesting.
 
-## What you get
+## Controls
 
-- **Quaternius AnimatedHuman** (CC0) with **Idle / Walk / Run** clips
-- **Shift** toggles run (faster + Run clip + quicker footfalls)
-- Soft footstep “da-da” WAVs under `assets/sfx/` (placeholder Foley; swap later)
-- **Day/night time system**: sun disc, moon, twinkling stars, procedural multi-layer clouds, weather, fog, thunder & lightning
-  - **T** — cycle time speed (`1× → 30× → 120× → 600×`)
-  - **Y** — cycle weather (`Clear → Cloudy → Overcast → Rain → Storm → Snow`)
-  - **L** — trigger a lightning bolt & delayed thunderclap
-- Smooth acceleration + yaw turn
-- 8-direction move (WASD / arrows)
-- **Zoom**: trackpad two-finger scroll (or pinch); mouse wheel / `+` `-` also work
-- Larger ground (**120×120**) with more walk spots
-- **Realistic terrain map** (procedural heightfield with stronger relief):
-  - Biomes: **Sea / Lake / Sand / Dirt / Grass / Mountain / River**
-  - **Three water bodies**:
-    - **Sea** — coastal plane, shore foam
-    - **Lake** — inland closed basins, still teal surface
-    - **River** — mountain spring → main creek + tributaries → lake or sea
-  - Scale: creek ≈ **1.3 m** at spring, **~4.4 m** at mouth (human-wadeable)
-  - **All cells walkable** — height-follow (no mesh trapping)
-  - **`MapGenerator.generate_random(seed, opts)`** — abstract random map API
-  - **G** calls `TerrainMap.generate_random()` for a new map
-- Fallback: static `walker.glb` + light bob if FBX import fails
+- **WASD / Arrows**: 8-direction movement
+- **Shift**: toggle run
+- **E**: interact with world beacons and harvestable resource nodes
+- **1 / 2 / 3 / 4** (`F` repeat, `X` cancel): Gather / Mine / Chop / Build actions
+- **Scroll / Pinch / `+` `-`**: camera zoom
+- **T / Y / L**: cycle time speed / weather / trigger lightning
+- **G / V**: generate new random map / cycle landform archetype
+- **F3**: toggle tactical HUD overlay
+- **`` ` `` (Backtick)**: toggle `DevConsole` (`tp_spawn`, `light_all`, `time`, `weather`, `give_item`)
+- **ESC**: pause menu / save & load slots / settings & keybindings
 
-## Run
+## Architecture Highlights
+
+- **Shared Plugins**: `addons/gu_core` and `addons/gu_gameplay` synced from `godot/addons/` via `uv run gu addons sync`.
+- **World & Terrain**: `MapGenerator`, `MapData`, `WorldLocator`, `TerrainBuildContext`, and `WorldSpawner` / `WorldCommands`.
+- **Gameplay Loop**: `WorldBeacon` + `EventBus` -> `QuestTracker` + `FlagStore`; `ResourceNode` -> `HealthComponent` -> `PoolService`-backed `WorldPickup` -> `InventoryContainer` + `SaveService`.
+
+## Run & Test
 
 ```bash
 ./start-walk.sh
+# or headless full check from shell/:
+cd ../../shell && uv run gu check
 ```
-
-Or open this folder in Godot 4.6+ and press **F5**.
-
-## Assets
-
-| File | Source | License |
-|------|--------|---------|
-| `assets/models/quaternius/AnimatedHuman.fbx` | Quaternius via civ-iso-godot | CC0 |
-| `assets/models/walker.glb` / `settler.glb` | Blender scripts in civ-iso-godot | project art |
-
-## Goal
-
-Control one person and walk naturally across the ground to different spots.

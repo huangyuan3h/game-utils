@@ -145,6 +145,10 @@ func _ensure_collision_shape() -> void:
 
 
 func _ensure_interact_action() -> void:
+	var ir := get_node_or_null("/root/InputRouter")
+	if ir != null and ir.has_method("register_action"):
+		ir.call("register_action", interact_action, [KEY_E], "Interact")
+		return
 	var action_name := String(interact_action)
 	if not InputMap.has_action(action_name):
 		InputMap.add_action(action_name)

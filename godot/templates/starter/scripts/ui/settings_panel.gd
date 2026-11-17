@@ -1,7 +1,14 @@
 extends Control
-## Protoss-themed settings panel bound directly to SettingsStore.
+## Protoss-themed settings panel bound to SettingsStore and InputRouter KeybindList.
 
 @onready var _panel: PanelContainer = %Panel
+@onready var _system_tab_btn: Button = get_node_or_null("%SystemTabButton") as Button
+@onready var _controls_tab_btn: Button = get_node_or_null("%ControlsTabButton") as Button
+@onready var _system_section: Control = get_node_or_null("%SystemSection") as Control
+@onready var _controls_section: Control = get_node_or_null("%ControlsSection") as Control
+@onready var _keybind_list: KeybindList = get_node_or_null("%KeybindList") as KeybindList
+@onready var _reset_keys_btn: Button = get_node_or_null("%ResetKeysButton") as Button
+
 @onready var _master_slider: HSlider = %MasterSlider
 @onready var _master_val: Label = %MasterValue
 @onready var _sfx_slider: HSlider = %SfxSlider
@@ -27,13 +34,37 @@ func _ready() -> void:
 	_fullscreen_check.toggled.connect(func(on: bool) -> void: _on_toggle("fullscreen", on))
 	_reset_btn.pressed.connect(_on_reset)
 	_back_btn.pressed.connect(_on_back)
+	if _system_tab_btn != null:
+		_system_tab_btn.pressed.connect(func() -> void: show_tab("system"))
+	if _controls_tab_btn != null:
+		_controls_tab_btn.pressed.connect(func() -> void: show_tab("controls"))
+	if _reset_keys_btn != null:
+		_reset_keys_btn.pressed.connect(_on_reset_keys)
 	ProtossUiFx.attach_tree(self, [_back_btn])
+	show_tab("system")
 	_sync_from_store()
 
 
 func on_ui_enter(_params: Dictionary = {}) -> void:
+	show_tab("system")
 	_sync_from_store()
+	if _keybind_list != null:
+		_keybind_list.rebuild()
 	ProtossUiFx.animate_panel_enter(_panel, self, true)
+
+
+func show_tab(tab_name: String) -> void:
+	var show_controls := (tab_name == "controls")
+	if _system_section != null:
+		_system_section.visible = not show_controls
+	if _controls_section != null:
+		_controls_section.visible = show_controls
+	if _system_tab_btn != null:
+		_system_tab_btn.disabled = not show_controls
+	if _controls_tab_btn != null:
+		_controls_tab_btn.disabled = show_controls
+	if _reset_btn != null:
+		_reset_btn.visible = not show_controls
 
 
 func _sync_from_store() -> void:
@@ -77,6 +108,11 @@ func _on_reset() -> void:
 	if store != null:
 		store.call("reset_defaults")
 		_sync_from_store()
+
+
+func _on_reset_keys() -> void:
+	if _keybind_list != null:
+		_keybind_list.reset_all()
 
 
 func _on_back() -> void:

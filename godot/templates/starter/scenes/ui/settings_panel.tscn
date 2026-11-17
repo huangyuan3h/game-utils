@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/settings_panel.gd" id="1_settings"]
 [ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_holo_panel.gdshader" id="2_holo"]
 [ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/protoss_crest.svg" id="3_crest"]
 [ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_psionic_glow.gdshader" id="4_glow"]
+[ext_resource type="Script" path="res://addons/gu_core/ui/keybind_list.gd" id="5_keybinds"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMat_holo"]
 shader = ExtResource("2_holo")
@@ -49,7 +50,7 @@ grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Center"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(490, 0)
+custom_minimum_size = Vector2(510, 0)
 layout_mode = 2
 
 [node name="HoloOverlay" type="ColorRect" parent="Center/Panel"]
@@ -87,22 +88,45 @@ layout_mode = 2
 mouse_filter = 2
 material = SubResource("ShaderMat_glow")
 
-[node name="AudioSectionLabel" type="Label" parent="Center/Panel/VBox"]
+[node name="TabRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SystemTabButton" type="Button" parent="Center/Panel/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "SYSTEM & AUDIO"
+
+[node name="ControlsTabButton" type="Button" parent="Center/Panel/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "CONTROLS"
+
+[node name="SystemSection" type="VBoxContainer" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="AudioSectionLabel" type="Label" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "AUDIO RESONANCE"
 
-[node name="MasterRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+[node name="MasterRow" type="HBoxContainer" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Label" type="Label" parent="Center/Panel/VBox/MasterRow"]
+[node name="Label" type="Label" parent="Center/Panel/VBox/SystemSection/MasterRow"]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 text = "Master"
 
-[node name="MasterSlider" type="HSlider" parent="Center/Panel/VBox/MasterRow"]
+[node name="MasterSlider" type="HSlider" parent="Center/Panel/VBox/SystemSection/MasterRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -111,7 +135,7 @@ max_value = 1.0
 step = 0.05
 value = 1.0
 
-[node name="MasterValue" type="Label" parent="Center/Panel/VBox/MasterRow"]
+[node name="MasterValue" type="Label" parent="Center/Panel/VBox/SystemSection/MasterRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
@@ -119,16 +143,16 @@ theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
 text = "100%"
 horizontal_alignment = 2
 
-[node name="SfxRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+[node name="SfxRow" type="HBoxContainer" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Label" type="Label" parent="Center/Panel/VBox/SfxRow"]
+[node name="Label" type="Label" parent="Center/Panel/VBox/SystemSection/SfxRow"]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 text = "SFX"
 
-[node name="SfxSlider" type="HSlider" parent="Center/Panel/VBox/SfxRow"]
+[node name="SfxSlider" type="HSlider" parent="Center/Panel/VBox/SystemSection/SfxRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -137,7 +161,7 @@ max_value = 1.0
 step = 0.05
 value = 0.9
 
-[node name="SfxValue" type="Label" parent="Center/Panel/VBox/SfxRow"]
+[node name="SfxValue" type="Label" parent="Center/Panel/VBox/SystemSection/SfxRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
@@ -145,16 +169,16 @@ theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
 text = "90%"
 horizontal_alignment = 2
 
-[node name="AmbienceRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+[node name="AmbienceRow" type="HBoxContainer" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Label" type="Label" parent="Center/Panel/VBox/AmbienceRow"]
+[node name="Label" type="Label" parent="Center/Panel/VBox/SystemSection/AmbienceRow"]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 text = "Ambience"
 
-[node name="AmbienceSlider" type="HSlider" parent="Center/Panel/VBox/AmbienceRow"]
+[node name="AmbienceSlider" type="HSlider" parent="Center/Panel/VBox/SystemSection/AmbienceRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -163,7 +187,7 @@ max_value = 1.0
 step = 0.05
 value = 0.85
 
-[node name="AmbienceValue" type="Label" parent="Center/Panel/VBox/AmbienceRow"]
+[node name="AmbienceValue" type="Label" parent="Center/Panel/VBox/SystemSection/AmbienceRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
@@ -171,16 +195,16 @@ theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
 text = "85%"
 horizontal_alignment = 2
 
-[node name="BgmRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+[node name="BgmRow" type="HBoxContainer" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Label" type="Label" parent="Center/Panel/VBox/BgmRow"]
+[node name="Label" type="Label" parent="Center/Panel/VBox/SystemSection/BgmRow"]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 text = "BGM"
 
-[node name="BgmSlider" type="HSlider" parent="Center/Panel/VBox/BgmRow"]
+[node name="BgmSlider" type="HSlider" parent="Center/Panel/VBox/SystemSection/BgmRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -189,7 +213,7 @@ max_value = 1.0
 step = 0.05
 value = 0.75
 
-[node name="BgmValue" type="Label" parent="Center/Panel/VBox/BgmRow"]
+[node name="BgmValue" type="Label" parent="Center/Panel/VBox/SystemSection/BgmRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
@@ -197,25 +221,53 @@ theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
 text = "75%"
 horizontal_alignment = 2
 
-[node name="Divider" type="HSeparator" parent="Center/Panel/VBox"]
+[node name="Divider" type="HSeparator" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 
-[node name="SystemSectionLabel" type="Label" parent="Center/Panel/VBox"]
+[node name="SystemSectionLabel" type="Label" parent="Center/Panel/VBox/SystemSection"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "SYSTEM DIRECTIVES"
 
-[node name="DebugHudCheck" type="CheckButton" parent="Center/Panel/VBox"]
+[node name="DebugHudCheck" type="CheckButton" parent="Center/Panel/VBox/SystemSection"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 text = "Tactical HUD Overlay (F3)"
 
-[node name="FullscreenCheck" type="CheckButton" parent="Center/Panel/VBox"]
+[node name="FullscreenCheck" type="CheckButton" parent="Center/Panel/VBox/SystemSection"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Fullscreen Projection"
+
+[node name="ControlsSection" type="VBoxContainer" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ControlsHint" type="Label" parent="Center/Panel/VBox/ControlsSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_font_sizes/font_size = 12
+text = "KEYBINDINGS (CLICK TO REBIND)"
+
+[node name="KeybindScroll" type="ScrollContainer" parent="Center/Panel/VBox/ControlsSection"]
+custom_minimum_size = Vector2(0, 230)
+layout_mode = 2
+
+[node name="KeybindList" type="VBoxContainer" parent="Center/Panel/VBox/ControlsSection/KeybindScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+script = ExtResource("5_keybinds")
+
+[node name="ResetKeysButton" type="Button" parent="Center/Panel/VBox/ControlsSection"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+text = "RESET DEFAULT KEYS"
 
 [node name="Spacer" type="Control" parent="Center/Panel/VBox"]
 custom_minimum_size = Vector2(0, 4)

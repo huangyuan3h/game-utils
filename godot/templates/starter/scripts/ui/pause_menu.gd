@@ -4,6 +4,7 @@ extends Control
 @onready var _panel: PanelContainer = %Panel
 @onready var _resume_btn: Button = %ResumeButton
 @onready var _save_btn: Button = %SaveButton
+@onready var _slots_btn: Button = get_node_or_null("%SlotsButton") as Button
 @onready var _settings_btn: Button = %SettingsButton
 @onready var _title_btn: Button = %TitleButton
 @onready var _status_label: Label = %StatusLabel
@@ -12,6 +13,8 @@ extends Control
 func _ready() -> void:
 	_resume_btn.pressed.connect(_on_resume)
 	_save_btn.pressed.connect(_on_save)
+	if _slots_btn != null:
+		_slots_btn.pressed.connect(_on_slots)
 	_settings_btn.pressed.connect(_on_settings)
 	_title_btn.pressed.connect(_on_title)
 	ProtossUiFx.attach_tree(self, [_resume_btn, _title_btn])
@@ -45,6 +48,12 @@ func _on_settings() -> void:
 	var flow := get_node_or_null("/root/GameFlow")
 	if flow != null:
 		flow.call("open_settings")
+
+
+func _on_slots() -> void:
+	var flow := get_node_or_null("/root/GameFlow")
+	if flow != null and flow.has_method("open_save_slots"):
+		flow.call("open_save_slots", "save")
 
 
 func _on_title() -> void:

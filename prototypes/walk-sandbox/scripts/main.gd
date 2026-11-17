@@ -1,5 +1,5 @@
 extends Node3D
-## World scene coordinator: wires terrain, sky/weather, player, camera rig, UI screens, beacons, and save snapshots.
+## World scene coordinator: wires terrain, sky/weather, player, camera rig, UI screens, quests, and saves.
 
 @onready var _player: CharacterBody3D = $Player
 @onready var _camera_rig: CameraRig = $CameraPivot
@@ -14,21 +14,13 @@ const TITLE_SCENE := preload("res://scenes/ui/title_screen.tscn")
 const PAUSE_SCENE := preload("res://scenes/ui/pause_menu.tscn")
 const SETTINGS_SCENE := preload("res://scenes/ui/settings_panel.tscn")
 const WorldLocatorScript = preload("res://scripts/map/world_locator.gd")
-const WorldBeaconScript = preload("res://scripts/world/world_beacon.gd")
-
-const BEACON_COLORS := [
-	Color(0.24, 0.88, 1.0),
-	Color(0.32, 0.92, 0.56),
-	Color(0.96, 0.78, 0.28),
-	Color(0.94, 0.44, 0.36),
-	Color(0.84, 0.50, 0.98),
-	Color(0.42, 0.72, 1.0),
-]
 
 var _landform_mode: int = -1 ## -1 = auto by seed, 0..3 = specific MapGenerator.Landform
 var _pending_spawn_override: Dictionary = {}
 var _pending_lit_beacon_ids: Array[String] = []
+var _pending_resource_states: Dictionary = {}
 var _beacons: Array[WorldBeacon] = []
+var _resource_nodes: Array[ResourceNode] = []
 var _focused_interactable: Interactable = null
 var _flags := FlagStore.new()
 var _quests := QuestTracker.new()
@@ -45,6 +37,10 @@ func _ready() -> void:
 		var interactor := _player.call("get_interactor") as Interactor
 		if interactor != null and not interactor.focus_changed.is_connected(_on_interactor_focus_changed):
 			interactor.focus_changed.connect(_on_interactor_focus_changed)
+	if _player.has_method("get_inventory"):
+		var inv := _player.call("get_inventory") as InventoryContainer
+		if inv != null and not inv.inventory_changed.is_connected(_refresh_overlay):
+			inv.inventory_changed.connect(_refresh_overlay)
 	if _sky_time != null and _sky_time.has_method("set_context"):
 		_sky_time.call("set_context", _terrain, _player)
 	if _camera_rig != null:
@@ -58,7 +54,7 @@ func _ready() -> void:
 		_terrain.connect("generation_finished", Callable(self, "_on_terrain_generation_finished"))
 
 	_place_player_on_terrain()
-	_spawn_beacons()
+	_rebuild_world_entities()
 	_refresh_interaction_prompt()
 	_refresh_overlay()
 
@@ -66,15 +62,17 @@ func _ready() -> void:
 	if flow != null:
 		flow.call("register_world", self)
 		flow.call("enter_title")
-	_register_dev_commands()
 
-
-func _process(_delta: float) -> void:
-	_clamp_player_to_map()
-	if _sky_time != null and _sky_time.has_method("get_weather_params") and _terrain != null and _terrain.has_method("apply_weather"):
-		_terrain.call("apply_weather", _sky_time.call("get_weather_params"))
-	_refresh_interaction_prompt()
-	_refresh_overlay()
+	WorldCommands.register(
+		get_node_or_null("/root/DevConsole"),
+		func() -> void:
+			_pending_spawn_override.clear()
+			_place_player_on_terrain(),
+		func() -> Array[WorldBeacon]: return _beacons,
+		_refresh_overlay,
+		_sky_time,
+		_player
+	)
 
 
 func _exit_tree() -> void:
@@ -85,10 +83,23 @@ func _exit_tree() -> void:
 		save_svc.call("unregister_saveable", "quests")
 
 
+func _process(_delta: float) -> void:
+	_clamp_player_to_map()
+	if _sky_time != null and _sky_time.has_method("get_weather_params") and _terrain != null and _terrain.has_method("apply_weather"):
+		_terrain.call("apply_weather", _sky_time.call("get_weather_params"))
+	_refresh_interaction_prompt()
+	_refresh_overlay()
+
+
 func start_new_world(opts: Dictionary = {}) -> void:
 	_pending_spawn_override.clear()
 	_pending_lit_beacon_ids.clear()
+	_pending_resource_states.clear()
 	_flags.clear()
+	if _player.has_method("get_inventory"):
+		var inv := _player.call("get_inventory") as InventoryContainer
+		if inv != null:
+			inv.clear()
 	_quests.apply_state({"active": {}, "completed": []})
 	_quests.start_quest(&"activate_beacons")
 	if opts.has("landform"):
@@ -123,8 +134,9 @@ func export_save_state() -> Dictionary:
 			"run_mode": run_mode,
 		},
 		"beacons": {
-			"lit_ids": _get_lit_beacon_ids(),
+			"lit_ids": WorldSpawner.export_beacons_lit_ids(_beacons),
 		},
+		"resources": WorldSpawner.export_resources_state(_resource_nodes),
 	}
 
 
@@ -143,6 +155,7 @@ func apply_save_state(doc: Dictionary) -> void:
 	var beacons_cfg: Dictionary = doc.get("beacons", {}) as Dictionary
 	for raw_id in beacons_cfg.get("lit_ids", []) as Array:
 		_pending_lit_beacon_ids.append(str(raw_id))
+	_pending_resource_states = (doc.get("resources", {}) as Dictionary).duplicate(true)
 
 	if _terrain != null and _terrain.has_method("generate_random"):
 		_terrain.call("generate_random", p_seed, opts)
@@ -163,10 +176,22 @@ func _register_ui_screens() -> void:
 	ui.call("register_screen", &"settings", SETTINGS_SCENE)
 
 
-func _terrain_height(x: float, z: float) -> float:
-	if _terrain != null and _terrain.has_method("sample_height"):
-		return float(_terrain.call("sample_height", x, z))
-	return 0.0
+func _setup_quests() -> void:
+	_quests.register_quest(WorldSpawner.create_beacon_quest())
+	_quests.bind(get_node_or_null("/root/EventBus"), _flags)
+	_quests.start_quest(&"activate_beacons")
+	_quests.quest_completed.connect(func(qid: StringName) -> void:
+		GuLog.info("Quests", "Completed quest: %s" % String(qid))
+		var ui := get_node_or_null("/root/UIRouter")
+		var flow := get_node_or_null("/root/GameFlow")
+		if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
+			ui.call("show_toast", "QUEST COMPLETE: Activate Sector Beacons", 3.0, &"success")
+		_refresh_overlay()
+	)
+	var save_svc := get_node_or_null("/root/SaveService")
+	if save_svc != null and save_svc.has_method("register_saveable"):
+		save_svc.call("register_saveable", "flags", _flags)
+		save_svc.call("register_saveable", "quests", _quests)
 
 
 func _place_player_on_terrain() -> void:
@@ -192,44 +217,24 @@ func _place_player_on_terrain() -> void:
 	_player.velocity = Vector3.ZERO
 
 
-func _spawn_beacons() -> void:
-	_beacons.clear()
+func _rebuild_world_entities() -> void:
 	_focused_interactable = null
-	for c in _markers_root.get_children():
-		_markers_root.remove_child(c)
-		c.queue_free()
-
-	var spots: Array[Dictionary] = []
-	if _terrain != null and _terrain.has_method("get_poi_spots"):
-		spots = _terrain.call("get_poi_spots") as Array[Dictionary]
-	elif _terrain != null and _terrain.has_method("get_map_data"):
-		var data: MapData = _terrain.call("get_map_data") as MapData
-		spots = WorldLocatorScript.find_poi_spots(data, 6, 16.0, _player.global_position)
-
-	for i in spots.size():
-		var spot := spots[i]
-		var pos := spot["position"] as Vector3
-		var idx := int(spot.get("index", i + 1))
-		var bid := str(spot.get("id", "beacon_%d" % idx))
-		var bname := str(spot.get("biome_name", "?"))
-		var col: Color = BEACON_COLORS[i % BEACON_COLORS.size()] as Color
-
-		var beacon := WorldBeaconScript.new() as WorldBeacon
-		beacon.configure(bid, idx, bname, col)
-		beacon.position = pos
-		beacon.set_lit(_pending_lit_beacon_ids.has(bid), false)
-		beacon.lit_changed.connect(_on_beacon_lit_changed)
-		_markers_root.add_child(beacon)
-		_beacons.append(beacon)
+	_beacons = WorldSpawner.spawn_beacons(
+		_markers_root,
+		_terrain,
+		_player.global_position,
+		_pending_lit_beacon_ids,
+		_on_beacon_lit_changed
+	)
 	_pending_lit_beacon_ids.clear()
-
-
-func _get_lit_beacon_ids() -> Array[String]:
-	var ids: Array[String] = []
-	for b in _beacons:
-		if is_instance_valid(b) and b.is_lit:
-			ids.append(b.interaction_id)
-	return ids
+	_resource_nodes = WorldSpawner.spawn_resource_nodes(
+		_markers_root,
+		_terrain,
+		_player.global_position,
+		_pending_resource_states,
+		_resource_nodes
+	)
+	_pending_resource_states.clear()
 
 
 func _on_beacon_lit_changed(beacon: WorldBeacon, lit: bool) -> void:
@@ -295,43 +300,7 @@ func _on_terrain_generation_finished(data: MapData) -> void:
 		print(msg)
 		GuLog.info("Main", msg)
 	_place_player_on_terrain()
-	_spawn_beacons()
-
-
-func _register_dev_commands() -> void:
-	var console := get_node_or_null("/root/DevConsole")
-	if console == null or not console.has_method("register_command"):
-		return
-	console.call("register_command", "tp_spawn", "Teleport player to safe spawn point", func(_args: Array[String]) -> String:
-		_pending_spawn_override.clear()
-		_place_player_on_terrain()
-		return "Teleported to %s" % str(_player.global_position)
-	)
-	console.call("register_command", "light_all", "Light or extinguish all world beacons [on|off]", func(args: Array[String]) -> String:
-		var turn_on := args.is_empty() or args[0].to_lower() != "off"
-		for b in _beacons:
-			if is_instance_valid(b):
-				b.set_lit(turn_on, false)
-		_refresh_overlay()
-		return "Set %d beacon(s) lit=%s" % [_beacons.size(), str(turn_on)]
-	)
-	console.call("register_command", "time", "Set time of day in hours (0..24)", func(args: Array[String]) -> String:
-		if args.is_empty() or _sky_time == null:
-			return "Usage: time <0..24>"
-		var h := fposmod(float(args[0]), 24.0)
-		_sky_time.set("hour", h)
-		return "Time set to %.2f" % h
-	)
-	console.call("register_command", "weather", "Set weather preset (clear|cloudy|overcast|rain|storm|snow)", func(args: Array[String]) -> String:
-		if args.is_empty() or _sky_time == null:
-			return "Usage: weather <clear|cloudy|overcast|rain|storm|snow>"
-		var names := ["clear", "cloudy", "overcast", "rain", "storm", "snow"]
-		var idx := names.find(args[0].to_lower())
-		if idx < 0:
-			return "Unknown weather '%s'" % args[0]
-		_sky_time.call("apply_state", {"weather": idx})
-		return "Weather set to %s" % names[idx]
-	)
+	_rebuild_world_entities()
 
 
 func _clamp_player_to_map() -> void:
@@ -362,40 +331,14 @@ func _refresh_overlay() -> void:
 		if not objs.is_empty():
 			var o0 := objs[0] as Dictionary
 			_debug_overlay.set_quest_summary("LINK QUEST: %d/%d" % [int(o0["current"]), int(o0["target"])])
+
+	if _player.has_method("get_inventory"):
+		var inv := _player.call("get_inventory") as InventoryContainer
+		if inv != null:
+			var ore := inv.count_item(&"ore")
+			var wood := inv.count_item(&"wood")
+			if ore > 0 or wood > 0:
+				_debug_overlay.set_inventory_summary("BAG Ore:%d Wood:%d" % [ore, wood])
+			else:
+				_debug_overlay.set_inventory_summary("")
 	_debug_overlay.refresh()
-
-
-func _setup_quests() -> void:
-	var def := QuestDef.from_dict({
-		"id": "activate_beacons",
-		"title": "Activate Sector Beacons",
-		"description": "Light 3 world beacons to stabilize the sector.",
-		"objectives": [
-			{
-				"id": "light_3",
-				"description": "Light 3 beacons",
-				"type": "event",
-				"event": "beacon_lit_changed",
-				"filter": {"lit": true},
-				"target": 3,
-			},
-		],
-		"rewards": [
-			{"type": "flag", "id": "sector_linked", "value": true},
-		],
-	})
-	_quests.register_quest(def)
-	_quests.bind(get_node_or_null("/root/EventBus"), _flags)
-	_quests.start_quest(&"activate_beacons")
-	_quests.quest_completed.connect(func(qid: StringName) -> void:
-		GuLog.info("Quests", "Completed quest: %s" % String(qid))
-		var ui := get_node_or_null("/root/UIRouter")
-		var flow := get_node_or_null("/root/GameFlow")
-		if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
-			ui.call("show_toast", "QUEST COMPLETE: Activate Sector Beacons", 3.0, &"success")
-		_refresh_overlay()
-	)
-	var save_svc := get_node_or_null("/root/SaveService")
-	if save_svc != null and save_svc.has_method("register_saveable"):
-		save_svc.call("register_saveable", "flags", _flags)
-		save_svc.call("register_saveable", "quests", _quests)

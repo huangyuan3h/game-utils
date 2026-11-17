@@ -98,6 +98,12 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "CONTINUE"
 
+[node name="LoadSlotsButton" type="Button" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "LOAD SLOT"
+
 [node name="NewWorldButton" type="Button" parent="Center/Panel/VBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 42)

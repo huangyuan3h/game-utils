@@ -57,6 +57,61 @@ func list_slots() -> Array[String]:
 	return slots
 
 
+func get_slot_metadata(slot: String) -> Dictionary:
+	var clean := sanitize_slot(slot)
+	var primary := get_slot_path(clean)
+	var bak := get_backup_path(clean)
+	var has_bak := FileAccess.file_exists(bak)
+	var path := primary if FileAccess.file_exists(primary) else (bak if has_bak else "")
+	if path == "":
+		return {
+			"slot": clean,
+			"exists": false,
+			"saved_at_unix": 0,
+			"saved_at_text": "",
+			"schema_version": -1,
+			"has_backup": false,
+		}
+
+	var f := FileAccess.open(path, FileAccess.READ)
+	var saved_unix := 0
+	var ver := -1
+	if f != null:
+		var parsed: Variant = JSON.parse_string(f.get_as_text())
+		f.close()
+		if parsed is Dictionary:
+			var d := parsed as Dictionary
+			saved_unix = int(d.get("saved_at_unix", 0))
+			ver = int(d.get("schema_version", -1))
+
+	var saved_txt := ""
+	if saved_unix > 0:
+		saved_txt = Time.get_datetime_string_from_unix_time(saved_unix, true).replace("T", " ")
+
+	return {
+		"slot": clean,
+		"exists": true,
+		"saved_at_unix": saved_unix,
+		"saved_at_text": saved_txt,
+		"schema_version": ver,
+		"has_backup": has_bak,
+	}
+
+
+func list_slot_metadata() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for slot_name: String in list_slots():
+		out.append(get_slot_metadata(slot_name))
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ta := int(a.get("saved_at_unix", 0))
+		var tb := int(b.get("saved_at_unix", 0))
+		if ta != tb:
+			return ta > tb
+		return str(a.get("slot", "")) < str(b.get("slot", ""))
+	)
+	return out
+
+
 func register_saveable(section_key: String, provider: Object) -> void:
 	if section_key == "" or provider == null or not is_instance_valid(provider):
 		return

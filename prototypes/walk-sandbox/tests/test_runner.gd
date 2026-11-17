@@ -125,6 +125,8 @@ func _run_all() -> void:
 	_test_pool_service_and_scene_loader()
 	_test_input_rebinding_and_dev_console()
 	_test_flags_and_quest_tracker()
+	_test_save_slots_panel_and_keybind_list()
+	_test_world_entity_primitives()
 
 
 func _test_map_data_and_generator() -> void:
@@ -608,6 +610,7 @@ func _test_protoss_ui_skin() -> void:
 		"res://scenes/ui/title_screen.tscn",
 		"res://scenes/ui/pause_menu.tscn",
 		"res://scenes/ui/settings_panel.tscn",
+		"res://addons/gu_core/ui/save_slots_panel.tscn",
 	]
 	for sp: String in screen_paths:
 		var packed := load(sp) as PackedScene
@@ -1381,3 +1384,213 @@ func _test_flags_and_quest_tracker() -> void:
 		DirAccess.remove_absolute(tmp_dir)
 	svc.free()
 	bus.free()
+
+
+func _test_save_slots_panel_and_keybind_list() -> void:
+	# 1) SaveService slot metadata & SaveSlotsPanel
+	var tmp_dir := "user://test_saves_slots_ui"
+	var svc := SaveServiceScript.new()
+	svc.save_dir = tmp_dir
+	svc.delete_slot("alpha")
+	svc.delete_slot("beta")
+	svc.save_slot("alpha", {"world": {"seed": 1}})
+	svc.save_slot("beta", {"world": {"seed": 2}})
+	var metas := svc.list_slot_metadata()
+	_assert(metas.size() == 2, "SaveService.list_slot_metadata returns all saved slots")
+	_assert(bool((metas[0] as Dictionary).get("exists", false)), "Slot metadata marks existing slot")
+	_assert(str((metas[0] as Dictionary).get("saved_at_text", "")) != "", "Slot metadata formats timestamp text")
+
+	var mock_world := MockWorld.new()
+	get_root().add_child(mock_world)
+
+	var flow := GameFlowScript.new()
+	get_root().add_child(flow)
+	flow.register_world(mock_world)
+
+	var slots_scene := load("res://addons/gu_core/ui/save_slots_panel.tscn") as PackedScene
+	_assert(slots_scene != null, "save_slots_panel.tscn loads cleanly")
+	var slots_inst := slots_scene.instantiate() as SaveSlotsPanel
+	slots_inst.save_service = svc
+	slots_inst.game_flow = flow
+	get_root().add_child(slots_inst)
+	slots_inst.on_ui_enter({"mode": "load", "allow_save": false})
+	_assert(slots_inst.get_mode() == "load" and slots_inst.get_slot_count() == 2, "SaveSlotsPanel populates existing slots in load mode")
+	slots_inst.set_mode("save")
+	_assert(slots_inst.get_mode() == "load", "SaveSlotsPanel blocks save mode when allow_save=false")
+
+	slots_inst.on_ui_enter({"mode": "save", "allow_save": true})
+	_assert(slots_inst.get_mode() == "save", "SaveSlotsPanel enables save mode when allow_save=true")
+	_assert(slots_inst.delete_slot_confirmed("alpha") == OK and slots_inst.get_slot_count() == 1, "SaveSlotsPanel.delete_slot_confirmed deletes slot and refreshes list")
+	slots_inst.free()
+
+	# Verify GameFlow.open_save_slots auto-registers & opens screen on UIRouter
+	var gf_aut := get_root().get_node_or_null("GameFlow")
+	var ui_aut := get_root().get_node_or_null("UIRouter")
+	if gf_aut != null and ui_aut != null:
+		gf_aut.call("open_save_slots", "load")
+		_assert(ui_aut.call("top_screen_id") == &"save_slots", "GameFlow.open_save_slots pushes save_slots onto UIRouter")
+		ui_aut.call("clear_screens")
+
+	svc.delete_slot("alpha")
+	svc.delete_slot("beta")
+	if DirAccess.dir_exists_absolute(tmp_dir):
+		DirAccess.remove_absolute(tmp_dir)
+	flow.queue_free()
+	mock_world.queue_free()
+	svc.free()
+
+	# 2) KeybindList dynamic rows + capture/cancel/swap + SettingsPanel tabs
+	var tmp_cfg := "user://test_keybind_ui.cfg"
+	if FileAccess.file_exists(tmp_cfg):
+		DirAccess.remove_absolute(tmp_cfg)
+	var store := SettingsStoreScript.new()
+	store.config_path = tmp_cfg
+	store.load_settings()
+
+	var ir := InputRouterScript.new()
+	ir.settings_store = store
+	ir.register_action(&"ui_act_a", [KEY_J], "Action A")
+	ir.register_action(&"ui_act_b", [KEY_K], "Action B")
+
+	var kb := KeybindList.new()
+	kb.input_router = ir
+	get_root().add_child(kb)
+	_assert(kb.get_action_count() == 2, "KeybindList builds one row per registered action")
+	_assert(kb.get_button_text(&"ui_act_a") == "J", "KeybindList renders current key label")
+
+	kb.begin_listen(&"ui_act_a")
+	_assert(kb.is_listening() and not ir.allow_debug(), "KeybindList.begin_listen pushes MODAL context")
+	var esc_res := kb.capture_key_event(&"ui_act_a", KEY_ESCAPE)
+	_assert(bool(esc_res.get("cancelled", false)) and not kb.is_listening() and ir.allow_debug(), "KEY_ESCAPE cancels key capture and restores context")
+	_assert(kb.get_button_text(&"ui_act_a") == "J", "Cancelled capture preserves previous key label")
+
+	var swap_res := kb.capture_key_event(&"ui_act_a", KEY_K)
+	_assert(bool(swap_res.get("ok", false)), "KeybindList.capture_key_event rebinds and swaps conflicts")
+	_assert(kb.get_button_text(&"ui_act_a") == "K" and kb.get_button_text(&"ui_act_b") == "J", "KeybindList refreshes both swapped button labels")
+
+	kb.reset_all()
+	_assert(kb.get_button_text(&"ui_act_a") == "J" and kb.get_button_text(&"ui_act_b") == "K", "KeybindList.reset_all restores default labels")
+
+	kb.free()
+	ir.free()
+	store.free()
+	if FileAccess.file_exists(tmp_cfg):
+		DirAccess.remove_absolute(tmp_cfg)
+
+	# Verify SettingsPanel tab toggle
+	var sp_packed := load("res://scenes/ui/settings_panel.tscn") as PackedScene
+	var sp_inst := sp_packed.instantiate() as Control
+	get_root().add_child(sp_inst)
+	sp_inst.call("show_tab", "controls")
+	var sys_sec := sp_inst.get_node_or_null("%SystemSection") as Control
+	var ctrl_sec := sp_inst.get_node_or_null("%ControlsSection") as Control
+	_assert(sys_sec != null and not sys_sec.visible and ctrl_sec != null and ctrl_sec.visible, "SettingsPanel switches between System and Controls tabs")
+	get_root().remove_child(sp_inst)
+	sp_inst.free()
+
+
+class MockCollector extends Node3D:
+	var inventory: InventoryContainer = null
+
+	func get_inventory() -> InventoryContainer:
+		return inventory
+
+
+func _test_world_entity_primitives() -> void:
+	# 1) HealthComponent damage, invuln window, heal, death, revive
+	var hc := HealthComponent.new()
+	hc.max_hp = 50.0
+	hc.invuln_time = 0.25
+	get_root().add_child(hc)
+	var died_hits := [0]
+	hc.died.connect(func(_src: Node) -> void: died_hits[0] += 1)
+
+	_assert(is_equal_approx(hc.apply_damage(20.0), 20.0), "HealthComponent applies initial damage")
+	_assert(is_equal_approx(hc.apply_damage(10.0), 0.0), "HealthComponent blocks damage during invuln window")
+	hc._process(0.30)
+	_assert(is_equal_approx(hc.heal(10.0), 10.0) and is_equal_approx(hc.get_hp(), 40.0), "HealthComponent heals after invuln expires")
+	hc.apply_damage(99.0)
+	_assert(hc.is_dead() and died_hits[0] == 1, "HealthComponent emits died once when HP hits zero")
+	_assert(is_equal_approx(hc.heal(10.0), 0.0), "HealthComponent ignores heal while dead")
+	hc.revive(true)
+	_assert(not hc.is_dead() and is_equal_approx(hc.get_hp(), 50.0), "HealthComponent.revive restores alive state and max HP")
+	get_root().remove_child(hc)
+	hc.free()
+
+	# 2) WorldPickup magnet, InventoryContainer overflow, EventBus, PoolService
+	var host := Node3D.new()
+	get_root().add_child(host)
+
+	var bus := EventBusScript.new()
+	var picked_events: Array[Dictionary] = []
+	bus.subscribe(&"item_picked_up", func(p: Dictionary) -> void: picked_events.append(p))
+
+	var pool := PoolServiceScript.new()
+	get_root().add_child(pool)
+
+	var pickup_packed := PackedScene.new()
+	var tpl_pickup := WorldPickup.new()
+	pickup_packed.pack(tpl_pickup)
+	tpl_pickup.free()
+	pool.prewarm(pickup_packed, 2)
+
+	var collector := MockCollector.new()
+	collector.inventory = InventoryContainer.new(1, 3) # max 3 items total
+	collector.add_to_group(WorldPickup.COLLECTOR_GROUP)
+	collector.position = Vector3.ZERO
+	host.add_child(collector)
+
+	var drop := pool.acquire(pickup_packed, host) as WorldPickup
+	drop.event_bus = bus
+	drop.pool_service = pool
+	drop.position = Vector3(2.2, 0.0, 0.0)
+	drop.configure(&"ore", 5, Color(0.4, 0.8, 1.0))
+
+	# Magnet slides pickup closer, collects 3, leaves 2 behind because inventory is full
+	for _i in 6:
+		drop.step_pickup(0.1)
+	_assert(collector.inventory.count_item(&"ore") == 3, "WorldPickup collects up to InventoryContainer capacity")
+	_assert(drop.amount == 2 and not drop.is_collected(), "WorldPickup retains uncollected leftover when inventory full")
+	_assert(picked_events.size() == 1 and int(picked_events[0]["amount"]) == 3, "WorldPickup emits EventBus item_picked_up")
+
+	# Expand inventory slots and finish collecting -> recycles back into PoolService
+	collector.inventory.max_slots = 2
+	drop.step_pickup(0.1)
+	_assert(collector.inventory.count_item(&"ore") == 5, "WorldPickup delivers remaining items once space opens")
+	_assert(drop.is_collected() and drop.get_parent() == pool, "WorldPickup recycles into PoolService after full collection")
+	var pstats := pool.get_pool_stats(pickup_packed)
+	_assert(int(pstats["available"]) == 2 and int(pstats["active"]) == 0, "PoolService restores available count after pickup release")
+
+	# 3) ResourceNode harvest -> deplete -> drop -> respawn -> SaveService round-trip
+	var rnode := ResourceNode.new()
+	rnode.event_bus = bus
+	rnode.pool_service = pool
+	rnode.pickup_scene = pickup_packed
+	rnode.respawn_time = 2.0
+	host.add_child(rnode)
+	rnode.configure("ore_test", &"ore", &"mine", [{"item_id": "ore", "min": 2, "max": 2, "chance": 1.0}], 20.0, 10.0)
+
+	_assert(is_equal_approx(rnode.apply_harvest_hit(collector), 10.0), "ResourceNode takes first harvest hit")
+	_assert(not rnode.is_depleted(), "ResourceNode stays active while HP > 0")
+	rnode.apply_harvest_hit(collector)
+	_assert(rnode.is_depleted() and not rnode.can_interact(collector), "ResourceNode depletes and disables interaction at 0 HP")
+
+	var spawned_pickups := 0
+	for ch in host.get_children():
+		if ch is WorldPickup:
+			spawned_pickups += 1
+	_assert(spawned_pickups >= 1, "Depleted ResourceNode spawns WorldPickup drop(s)")
+
+	var saved_state := rnode.export_state()
+	_assert(bool(saved_state.get("depleted", false)), "ResourceNode.export_state captures depleted state")
+
+	rnode._process(2.5)
+	_assert(not rnode.is_depleted() and is_equal_approx(rnode.get_health().get_hp(), 20.0), "ResourceNode respawns after respawn_time elapses")
+
+	rnode.apply_state(saved_state)
+	_assert(rnode.is_depleted() and not rnode.can_interact(collector), "ResourceNode.apply_state restores depleted state")
+
+	pool.clear_pool(pickup_packed)
+	pool.queue_free()
+	bus.free()
+	host.free()

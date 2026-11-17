@@ -23,6 +23,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.randomize()
+	add_to_group(&"gu_camera_rigs")
 	_resolve_camera()
 	_bind_zoom_keys()
 
@@ -140,6 +141,11 @@ func _zoom_sensitivity() -> float:
 
 
 func _bind_zoom_keys() -> void:
+	var ir := get_node_or_null("/root/InputRouter")
+	if ir != null and ir.has_method("register_action"):
+		ir.call("register_action", &"zoom_in", [KEY_EQUAL, KEY_KP_ADD], "Zoom In")
+		ir.call("register_action", &"zoom_out", [KEY_MINUS, KEY_KP_SUBTRACT], "Zoom Out")
+		return
 	_bind("zoom_in", [KEY_EQUAL, KEY_KP_ADD])
 	_bind("zoom_out", [KEY_MINUS, KEY_KP_SUBTRACT])
 

@@ -1,58 +1,46 @@
-# game-utils audio shell
+# game-utils CLI (`gu` / `gu-audio`)
 
-Unified CLI to generate **SFX** and **BGM** for games.
+Unified Python CLI for game audio pipelines, Godot shared addon/project management, data table validation, and headless CI checks.
 
-## Quick start
-
-From the **repo root** (recommended):
-
-```bash
-./start-audio.sh
-```
-
-On macOS you can also double-click `start-audio.command` in Finder.
-
-Or from `shell/`:
+## Setup
 
 ```bash
 cd shell
-uv sync
-uv run gu-audio          # interactive menu
-uv run gu-audio doctor
-uv run gu-audio sfx generate coin
-uv run gu-audio bgm status
+uv sync --group dev
 ```
 
 ## Commands
 
-### SFX (realistic collections — preferred)
+### Godot Project & Addon Scaffolding
 
 ```bash
-uv run gu-audio sfx needs
-uv run gu-audio sfx collections
-uv run gu-audio sfx open --need footsteps
-uv run gu-audio sfx open --collection sonniss-gdc
-# after you download a zip:
-uv run gu-audio sfx import ~/Downloads/some-pack.zip --name sonniss-demo
-uv run gu-audio sfx library
+uv run gu init ~/Projects/my-game --name "My Game"   # scaffold starter Godot 4.6 project
+uv run gu addons sync --prune                        # sync godot/addons/ -> prototypes/walk-sandbox/addons/
+uv run gu check                                      # run addons parity + pytest + Godot import/tests/smoke
+uv run gu export --preset macOS --out dist/game.dmg --dry-run
 ```
 
-Procedural beeps (`sfx generate`) are kept only as placeholders.
-
-### BGM (ACE-Step 1.5)
+### Assets Sync, Audit & Credits
 
 ```bash
-uv run gu-audio bgm setup          # clone + uv sync (large download)
-uv run gu-audio bgm ui             # Gradio on http://localhost:7860
-uv run gu-audio bgm api            # REST API on http://localhost:8001
-uv run gu-audio bgm generate --prompt "calm 8-bit adventure loop, 90 BPM"
+uv run gu sync --dry-run                             # preview output/ audio sync -> Godot assets/audio/
+uv run gu sync                                       # copy audio + update ATTRIBUTION.json
+uv run gu assets audit --target ../prototypes/walk-sandbox --write
+uv run gu assets credits --target ../prototypes/walk-sandbox
 ```
 
-## Backends
+### Data Tables & Localization
 
-| Area | Backend | Needs |
-|------|---------|-------|
-| SFX | `builtin` (default) | Python only |
-| SFX | `jsfxr` | Node.js + npm |
-| SFX | `rfxgen` | `rfxgen` binary on PATH |
-| BGM | `acestep` | `uv`, GPU recommended, disk for models |
+```bash
+uv run gu data validate path/to/data
+uv run gu data build path/to/data --out path/to/godot/data
+```
+
+### SFX & BGM
+
+```bash
+uv run gu sfx needs
+uv run gu sfx collections
+uv run gu sfx import ~/Downloads/some-pack.zip --name sonniss-demo
+uv run gu bgm status
+```

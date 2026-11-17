@@ -20,6 +20,7 @@ var sky_time: Node = null
 var _run_mode: bool = false
 var _locomotion := CharacterLocomotion.new()
 var _actions := CharacterActionController.new()
+var _inventory := InventoryContainer.new(16, 99)
 var _visual: CharacterVisual
 var _audio: CharacterAudio
 var _head_light: NightHeadlight
@@ -30,6 +31,10 @@ func _ready() -> void:
 	_ensure_input_map()
 	collision_mask = 0
 	collision_layer = 0
+	add_to_group(WorldPickup.COLLECTOR_GROUP)
+	var save_svc := get_node_or_null("/root/SaveService")
+	if save_svc != null and save_svc.has_method("register_saveable"):
+		save_svc.call("register_saveable", "inventory", _inventory)
 
 	_visual = CharacterVisual.new()
 	_visual.name = "VisualController"
@@ -56,6 +61,12 @@ func _ready() -> void:
 	_label.text = _visual.model_status_text
 
 
+func _exit_tree() -> void:
+	var save_svc := get_node_or_null("/root/SaveService")
+	if save_svc != null and save_svc.has_method("unregister_saveable"):
+		save_svc.call("unregister_saveable", "inventory")
+
+
 func set_context(p_terrain: Node, p_sky_time: Node) -> void:
 	terrain = p_terrain
 	sky_time = p_sky_time
@@ -63,6 +74,10 @@ func set_context(p_terrain: Node, p_sky_time: Node) -> void:
 
 func get_interactor() -> Interactor:
 	return _interactor
+
+
+func get_inventory() -> InventoryContainer:
+	return _inventory
 
 
 func get_locomotion() -> CharacterLocomotion:
@@ -158,6 +173,7 @@ func _on_action_beat(action_id: StringName, beat_index: int, cycle_count: int) -
 		_visual.trigger_action_beat(action_id)
 	if _audio != null:
 		_audio.play_action_beat(action_id)
+	_apply_action_beat_to_nearby_resource(action_id)
 	var bus := get_node_or_null("/root/EventBus")
 	if bus != null and bus.has_method("emit_event"):
 		bus.call("emit_event", &"character_action_beat", {
@@ -165,6 +181,33 @@ func _on_action_beat(action_id: StringName, beat_index: int, cycle_count: int) -
 			"beat_index": beat_index,
 			"cycle_count": cycle_count,
 		})
+
+
+func _apply_action_beat_to_nearby_resource(action_id: StringName) -> void:
+	if not is_inside_tree():
+		return
+	var focused := _interactor.get_focused() if _interactor != null else null
+	if focused is ResourceNode:
+		var rfocus := focused as ResourceNode
+		if not rfocus.is_depleted():
+			rfocus.apply_harvest_hit(self)
+			return
+	var tree := get_tree()
+	if tree == null:
+		return
+	var best: ResourceNode = null
+	var best_d2 := 2.8 * 2.8
+	for node in tree.get_nodes_in_group(Interactable.GROUP_NAME):
+		if node is ResourceNode:
+			var rn := node as ResourceNode
+			if rn.is_depleted() or rn.preferred_action != action_id:
+				continue
+			var d2 := global_position.distance_squared_to(rn.global_position)
+			if d2 <= best_d2:
+				best_d2 = d2
+				best = rn
+	if best != null:
+		best.apply_harvest_hit(self)
 
 
 func _is_gameplay_input_allowed() -> bool:
@@ -182,18 +225,24 @@ func _ensure_input_map() -> void:
 		router.call("register_action", &"move_forward", [KEY_W, KEY_UP], "Move Forward")
 		router.call("register_action", &"move_back", [KEY_S, KEY_DOWN], "Move Back")
 		router.call("register_action", &"sprint", [KEY_SHIFT], "Toggle Run")
+		router.call("register_action", &"action_gather", [KEY_1], "Action: Gather")
+		router.call("register_action", &"action_mine", [KEY_2], "Action: Mine")
+		router.call("register_action", &"action_chop", [KEY_3], "Action: Chop")
+		router.call("register_action", &"action_build", [KEY_4], "Action: Build")
+		router.call("register_action", &"action_repeat", [KEY_F], "Repeat Action")
+		router.call("register_action", &"action_cancel", [KEY_X], "Cancel Action")
 	else:
 		_bind("move_left", [KEY_A, KEY_LEFT])
 		_bind("move_right", [KEY_D, KEY_RIGHT])
 		_bind("move_forward", [KEY_W, KEY_UP])
 		_bind("move_back", [KEY_S, KEY_DOWN])
 		_bind("sprint", [KEY_SHIFT])
-	_bind("action_gather", [KEY_1])
-	_bind("action_mine", [KEY_2])
-	_bind("action_chop", [KEY_3])
-	_bind("action_build", [KEY_4])
-	_bind("action_repeat", [KEY_F])
-	_bind("action_cancel", [KEY_X])
+		_bind("action_gather", [KEY_1])
+		_bind("action_mine", [KEY_2])
+		_bind("action_chop", [KEY_3])
+		_bind("action_build", [KEY_4])
+		_bind("action_repeat", [KEY_F])
+		_bind("action_cancel", [KEY_X])
 
 
 func _bind(action: String, keys: Array) -> void:

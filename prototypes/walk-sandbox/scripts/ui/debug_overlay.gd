@@ -17,6 +17,7 @@ var _camera_rig: CameraRig = null
 var _landform_mode: int = -1
 var _reached_spots: Array[String] = []
 var _quest_summary: String = ""
+var _inventory_summary: String = ""
 var _hud_enabled: bool = true
 
 
@@ -42,6 +43,10 @@ func set_reached_spots(spots: Array[String]) -> void:
 
 func set_quest_summary(summary: String) -> void:
 	_quest_summary = summary
+
+
+func set_inventory_summary(summary: String) -> void:
+	_inventory_summary = summary
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -108,6 +113,8 @@ func refresh() -> void:
 		var line := "  ".join(tokens)
 		if _quest_summary != "":
 			line += "  |  " + _quest_summary
+		if _inventory_summary != "":
+			line += "  |  " + _inventory_summary
 		_beacons_label.text = line
 
 

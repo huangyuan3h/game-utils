@@ -10,7 +10,10 @@ var state: State = State.BOOT
 var title_screen_id: StringName = &"title"
 var pause_screen_id: StringName = &"pause"
 var settings_screen_id: StringName = &"settings"
+var save_slots_screen_id: StringName = &"save_slots"
 var default_save_slot: String = "autosave"
+
+const DEFAULT_SAVE_SLOTS_SCENE_PATH := "res://addons/gu_core/ui/save_slots_panel.tscn"
 
 var _world: Node = null
 var _quitting: bool = false
@@ -129,6 +132,21 @@ func open_settings() -> void:
 	var ui := _ui_router()
 	if ui != null and ui.call("has_registered", settings_screen_id):
 		ui.call("push_screen", settings_screen_id, {}, 1)
+
+
+func open_save_slots(mode: String = "load") -> void:
+	var ui := _ui_router()
+	if ui == null:
+		return
+	if not bool(ui.call("has_registered", save_slots_screen_id)) and ResourceLoader.exists(DEFAULT_SAVE_SLOTS_SCENE_PATH):
+		var packed := load(DEFAULT_SAVE_SLOTS_SCENE_PATH) as PackedScene
+		if packed != null:
+			ui.call("register_screen", save_slots_screen_id, packed)
+	if bool(ui.call("has_registered", save_slots_screen_id)):
+		ui.call("push_screen", save_slots_screen_id, {
+			"mode": mode,
+			"allow_save": state != State.TITLE,
+		}, 1)
 
 
 func close_top_ui() -> void:

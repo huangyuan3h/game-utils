@@ -93,6 +93,11 @@ func _run_all() -> void:
 	_assert(qt.is_completed(&"q_start") and flags.get_bool(&"q_done"), "QuestTracker + FlagStore work in starter")
 	qt.unbind()
 
+	var hc := HealthComponent.new()
+	hc.max_hp = 30.0
+	_assert(is_equal_approx(hc.apply_damage(12.0), 12.0) and is_equal_approx(hc.get_hp(), 18.0), "HealthComponent works in starter")
+	hc.free()
+
 	var table_path := "user://starter_table.json"
 	var tf := FileAccess.open(table_path, FileAccess.WRITE)
 	tf.store_string('{"rows":[{"id":"potion","val":20}]}')
@@ -107,5 +112,11 @@ func _run_all() -> void:
 		"res://scenes/ui/title_screen.tscn",
 		"res://scenes/ui/pause_menu.tscn",
 		"res://scenes/ui/settings_panel.tscn",
+		"res://addons/gu_core/ui/save_slots_panel.tscn",
 	]:
-		_assert(load(ui_path) is PackedScene, "Starter UI loads: %s" % ui_path)
+		var packed := load(ui_path) as PackedScene
+		_assert(packed is PackedScene, "Starter UI loads: %s" % ui_path)
+		if packed != null:
+			var ui_inst := packed.instantiate() as Control
+			_assert(ui_inst != null and ui_inst.get_node_or_null("%Panel") != null, "Starter UI exposes %%Panel: %s" % ui_path)
+			ui_inst.free()
