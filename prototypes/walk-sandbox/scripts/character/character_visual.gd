@@ -12,7 +12,6 @@ const SWIM_PITCH := 1.38
 const SWIM_IDLE_PITCH := 0.74
 const SWIM_PIVOT_Y := 0.70
 const SWIM_ROLL := 0.10
-const CLIMB_ROLL := 0.06
 
 enum IKMode { NONE, SWIM, CLIMB, WORK }
 
@@ -58,10 +57,12 @@ func update_visual(loco: CharacterLocomotion, delta: float, action_frame: Dictio
 	if is_acting:
 		lean = 0.0
 	var target_swim_pitch := lerpf(SWIM_IDLE_PITCH, SWIM_PITCH, loco.swim_move)
-	var target_climb_pitch := clampf((PI * 0.5 - atan(loco.climb_grade)) * 0.55, 0.14, 0.52)
+	# Lean into the slope like a steep hike. The model is small, so a fraction
+	# of the slope angle reads as a scramble without planting the chest in the hill.
+	var slope_pitch := clampf(atan(maxf(loco.climb_grade, 0.0)) * 0.55, 0.0, 0.32)
+	var target_climb_pitch := slope_pitch
 	var pitch := lean * (1.0 - loco.climb_amt) + target_swim_pitch * loco.swim_amt + target_climb_pitch * loco.climb_amt
 	var body_roll := sin(loco.swim_phase * TAU) * SWIM_ROLL * loco.swim_amt * loco.swim_move
-	body_roll += -cos(loco.climb_phase * TAU) * CLIMB_ROLL * loco.climb_amt * loco.climb_move
 	var basis := Basis(Vector3.UP, loco.facing_yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.UP, body_roll)
 	_visual_root.basis = _visual_root.basis.slerp(basis, 1.0 - exp(-10.0 * delta))
 
@@ -69,9 +70,6 @@ func update_visual(loco: CharacterLocomotion, delta: float, action_frame: Dictio
 	if loco.swim_amt > 0.05:
 		var swim_bob := lerpf(sin(loco.swim_t * 0.9) * 0.010, sin(loco.swim_phase * TAU * 2.0) * 0.014, loco.swim_move)
 		bob = swim_bob * loco.swim_amt
-	elif loco.climb_amt > 0.05:
-		var climb_bob := sin(loco.climb_phase * TAU * 2.0) * 0.032 * loco.climb_move
-		bob = climb_bob * loco.climb_amt
 	elif loco.is_moving and not is_acting:
 		_bob_t += delta * ((14.0 if loco.is_running else 8.0) + loco.speed_xz * 1.5)
 		bob = absf(sin(_bob_t)) * (0.06 if loco.is_running else 0.045)
@@ -83,8 +81,8 @@ func update_visual(loco: CharacterLocomotion, delta: float, action_frame: Dictio
 	var chest := Vector3(0.0, pivot_y, 0.0)
 	var target_pos := chest - _visual_root.basis * chest
 	if loco.climb_amt > 0.01:
-		var sway_x := -cos(loco.climb_phase * TAU) * 0.04 * loco.climb_move
-		var climb_offset := Vector3(sway_x, -0.06, -0.08) * loco.climb_amt
+		# A few centimetres of clearance. A large standoff reads as floating off the hill.
+		var climb_offset := Vector3(0.0, 0.015, -0.04) * loco.climb_amt
 		target_pos += Basis(Vector3.UP, loco.facing_yaw) * climb_offset
 	target_pos.y += bob
 	_visual_root.position = _visual_root.position.lerp(target_pos, 1.0 - exp(-8.0 * delta))
@@ -96,8 +94,6 @@ func update_visual(loco: CharacterLocomotion, delta: float, action_frame: Dictio
 		var desired_mode := IKMode.NONE
 		if loco.swim_amt > 0.45:
 			desired_mode = IKMode.SWIM
-		elif loco.climb_amt > 0.35:
-			desired_mode = IKMode.CLIMB
 		elif is_acting and _work_ik.has_valid_rig() and ik_profile != &"":
 			desired_mode = IKMode.WORK
 

@@ -38,6 +38,12 @@ func _ready() -> void:
 	refresh_slots()
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_apply_mode_ui()
+		refresh_slots()
+
+
 func on_ui_enter(params: Dictionary = {}) -> void:
 	_allow_save = bool(params.get("allow_save", false))
 	var req_mode := str(params.get("mode", "load"))
@@ -76,9 +82,9 @@ func refresh_slots() -> void:
 
 	if metas.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "No save archives found."
+		empty_lbl.text = tr("SLOTS_EMPTY")
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty_lbl.add_theme_color_override("font_color", Color(0.55, 0.72, 0.88, 0.85))
+		empty_lbl.add_theme_color_override("font_color", Color(0.62, 0.62, 0.62, 0.9))
 		_slot_list.add_child(empty_lbl)
 		return
 
@@ -101,10 +107,10 @@ func save_to_slot(slot_name: String) -> Error:
 	var ui := _get_ui_router()
 	if err == OK:
 		if ui != null and ui.has_method("show_toast"):
-			ui.call("show_toast", "Saved slot '%s'" % clean_name, 2.2, &"success")
+			ui.call("show_toast", tr("SLOTS_SAVED") % clean_name, 2.2, &"success")
 		refresh_slots()
 	elif ui != null and ui.has_method("show_toast"):
-		ui.call("show_toast", "Save failed (%d)" % err, 2.5, &"error")
+		ui.call("show_toast", tr("SLOTS_SAVE_FAILED") % err, 2.5, &"error")
 	return err
 
 
@@ -116,7 +122,7 @@ func load_from_slot(slot_name: String) -> bool:
 	if not ok:
 		var ui := _get_ui_router()
 		if ui != null and ui.has_method("show_toast"):
-			ui.call("show_toast", "Failed to load '%s'" % slot_name, 2.5, &"error")
+			ui.call("show_toast", tr("SLOTS_LOAD_FAILED") % slot_name, 2.5, &"error")
 	return ok
 
 
@@ -128,7 +134,7 @@ func delete_slot_confirmed(slot_name: String) -> Error:
 	if err == OK:
 		var ui := _get_ui_router()
 		if ui != null and ui.has_method("show_toast"):
-			ui.call("show_toast", "Deleted slot '%s'" % slot_name, 2.0, &"info")
+			ui.call("show_toast", tr("SLOTS_DELETED") % slot_name, 2.0, &"info")
 		refresh_slots()
 	return err
 
@@ -141,23 +147,24 @@ func _build_slot_row(meta: Dictionary) -> Control:
 
 	var info_lbl := Label.new()
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_lbl.text = "%s  —  %s" % [slot_name, ts_text if ts_text != "" else "unknown time"]
+	var when := ts_text if ts_text != "" else tr("SLOTS_UNKNOWN_TIME")
+	info_lbl.text = "%s  —  %s" % [slot_name, when]
 	info_lbl.add_theme_font_size_override("font_size", 13)
 	row.add_child(info_lbl)
 
 	var primary_btn := Button.new()
 	primary_btn.custom_minimum_size = Vector2(104, 34)
 	if _mode == "save":
-		primary_btn.text = "OVERWRITE"
+		primary_btn.text = tr("SLOTS_OVERWRITE")
 		primary_btn.pressed.connect(func() -> void: _confirm_save_overwrite(slot_name))
 	else:
-		primary_btn.text = "LOAD"
+		primary_btn.text = tr("SLOTS_LOAD")
 		primary_btn.pressed.connect(func() -> void: load_from_slot(slot_name))
 	row.add_child(primary_btn)
 
 	var del_btn := Button.new()
 	del_btn.custom_minimum_size = Vector2(84, 34)
-	del_btn.text = "DELETE"
+	del_btn.text = tr("SLOTS_DELETE")
 	del_btn.pressed.connect(func() -> void: _confirm_delete(slot_name))
 	row.add_child(del_btn)
 
@@ -183,10 +190,10 @@ func _confirm_save_overwrite(slot_name: String) -> void:
 	if ui != null and ui.has_method("show_confirm"):
 		ui.call(
 			"show_confirm",
-			"OVERWRITE ARCHIVE",
-			"Overwrite save slot '%s'?" % slot_name,
+			tr("SLOTS_OVERWRITE_TITLE"),
+			tr("SLOTS_OVERWRITE_BODY") % slot_name,
 			func() -> void: save_to_slot(slot_name),
-			{"confirm_text": "OVERWRITE", "cancel_text": "CANCEL"}
+			{"confirm_text": tr("SLOTS_OVERWRITE"), "cancel_text": tr("SLOTS_CANCEL")}
 		)
 	else:
 		save_to_slot(slot_name)
@@ -197,10 +204,10 @@ func _confirm_delete(slot_name: String) -> void:
 	if ui != null and ui.has_method("show_confirm"):
 		ui.call(
 			"show_confirm",
-			"DELETE ARCHIVE",
-			"Permanently delete save slot '%s'?" % slot_name,
+			tr("SLOTS_DELETE_TITLE"),
+			tr("SLOTS_DELETE_BODY") % slot_name,
 			func() -> void: delete_slot_confirmed(slot_name),
-			{"confirm_text": "DELETE", "cancel_text": "CANCEL"}
+			{"confirm_text": tr("SLOTS_DELETE"), "cancel_text": tr("SLOTS_CANCEL")}
 		)
 	else:
 		delete_slot_confirmed(slot_name)
@@ -208,7 +215,17 @@ func _confirm_delete(slot_name: String) -> void:
 
 func _apply_mode_ui() -> void:
 	if _header_label != null:
-		_header_label.text = "CHRONO ARCHIVES // SAVE" if _mode == "save" else "CHRONO ARCHIVES // LOAD"
+		_header_label.text = tr("SLOTS_HEADER_SAVE") if _mode == "save" else tr("SLOTS_HEADER_LOAD")
+	if _load_mode_btn != null:
+		_load_mode_btn.text = tr("SLOTS_LOAD_MODE")
+	if _save_mode_btn != null:
+		_save_mode_btn.text = tr("SLOTS_SAVE_MODE")
+	if _create_save_btn != null:
+		_create_save_btn.text = tr("SLOTS_SAVE_NEW")
+	if _slot_input != null:
+		_slot_input.placeholder_text = tr("SLOTS_NAME_PLACEHOLDER")
+	if _back_btn != null:
+		_back_btn.text = tr("SLOTS_BACK")
 	if _mode_row != null:
 		_mode_row.visible = _allow_save
 	if _save_mode_btn != null:

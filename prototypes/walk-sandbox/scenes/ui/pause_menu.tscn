@@ -1,26 +1,6 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=1 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1_pause"]
-[ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_holo_panel.gdshader" id="2_holo"]
-[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/protoss_crest.svg" id="3_crest"]
-[ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_psionic_glow.gdshader" id="4_glow"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMat_holo"]
-shader = ExtResource("2_holo")
-shader_parameter/scan_color = Color(0.22, 0.91, 1, 1)
-shader_parameter/gold_rim_color = Color(0.95, 0.81, 0.4, 1)
-shader_parameter/grid_alpha = 0.045
-shader_parameter/scan_alpha = 0.08
-shader_parameter/scan_speed = 0.24
-shader_parameter/rim_alpha = 0.065
-
-[sub_resource type="ShaderMaterial" id="ShaderMat_glow"]
-shader = ExtResource("4_glow")
-shader_parameter/base_color = Color(0.08, 0.5, 0.65, 0.75)
-shader_parameter/pulse_color = Color(0.22, 0.91, 1, 1)
-shader_parameter/flow_speed = 0.8
-shader_parameter/pulse_strength = 0.7
-
 [node name="PauseMenu" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -37,7 +17,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.012, 0.025, 0.06, 0.62)
+color = Color(0.06, 0.06, 0.06, 0.62)
 
 [node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -52,40 +32,23 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(380, 0)
 layout_mode = 2
 
-[node name="HoloOverlay" type="ColorRect" parent="Center/Panel"]
-layout_mode = 2
-mouse_filter = 2
-material = SubResource("ShaderMat_holo")
-
 [node name="VBox" type="VBoxContainer" parent="Center/Panel"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
 [node name="StatusTag" type="Label" parent="Center/Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 0.92)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.92)
 theme_override_font_sizes/font_size = 11
 text = "STASIS FIELD // SIMULATION SUSPENDED"
 horizontal_alignment = 1
 
 [node name="Header" type="Label" parent="Center/Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.91, 0.79, 1)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
 theme_override_font_sizes/font_size = 24
 text = "STASIS PAUSE"
 horizontal_alignment = 1
-
-[node name="Crest" type="TextureRect" parent="Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 20)
-layout_mode = 2
-texture = ExtResource("3_crest")
-stretch_mode = 3
-
-[node name="PsiBeam" type="ColorRect" parent="Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 2)
-layout_mode = 2
-mouse_filter = 2
-material = SubResource("ShaderMat_glow")
 
 [node name="Spacer" type="Control" parent="Center/Panel/VBox"]
 custom_minimum_size = Vector2(0, 2)

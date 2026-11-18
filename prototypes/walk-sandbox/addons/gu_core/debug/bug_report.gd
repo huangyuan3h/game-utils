@@ -2,7 +2,7 @@ class_name BugReport
 extends RefCounted
 ## Writes a small on-disk pack: log, screenshot, save copy, and player position.
 
-static func write_pack(dir_path: String, position: Vector3, save_text: String) -> String:
+static func write_pack(dir_path: String, position: Vector3, save_text: String, world_seconds: float = 0.0) -> String:
 	var absolute := ProjectSettings.globalize_path(dir_path)
 	DirAccess.make_dir_recursive_absolute(absolute)
 	var log_file := FileAccess.open(absolute.path_join("log.txt"), FileAccess.WRITE)
@@ -19,6 +19,7 @@ static func write_pack(dir_path: String, position: Vector3, save_text: String) -
 			"x": position.x,
 			"y": position.y,
 			"z": position.z,
+			"world_seconds": world_seconds,
 		}))
 		pos_file.close()
 	var image := Image.create(4, 4, false, Image.FORMAT_RGB8)

@@ -4,7 +4,8 @@ Reference Godot 4.6 3D prototype integrating `gu_core` and `gu_gameplay` on top 
 
 ## Controls
 
-- **WASD / Arrows**: 8-direction movement
+- **WASD / Arrows**: move relative to the camera
+- **Q / R** or **right-drag**: turn the camera left / right
 - **Shift**: toggle run
 - **E**: interact with world beacons and harvestable resource nodes
 - **1 / 2 / 3 / 4** (`F` repeat, `X` cancel): Gather / Mine / Chop / Build actions

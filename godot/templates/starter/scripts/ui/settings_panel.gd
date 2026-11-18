@@ -44,6 +44,7 @@ func _ready() -> void:
 	_debug_check.toggled.connect(func(on: bool) -> void: _on_toggle("show_debug_hud", on))
 	_fullscreen_check.toggled.connect(func(on: bool) -> void: _on_toggle("fullscreen", on))
 	if _language_option != null:
+		_language_option.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		_language_option.item_selected.connect(_on_language_selected)
 	_reset_btn.pressed.connect(_on_reset)
 	_back_btn.pressed.connect(_on_back)
@@ -103,6 +104,8 @@ func _sync_from_store() -> void:
 
 
 func _refresh_texts() -> void:
+	_set_tr(get_node_or_null("Center/Panel/VBox/Tag") as Label, "SETTINGS_TAG")
+	_set_tr(get_node_or_null("Center/Panel/VBox/Header") as Label, "SETTINGS_HEADER")
 	_set_tr(_system_tab_btn, "SETTINGS_TAB_SYSTEM")
 	_set_tr(_controls_tab_btn, "SETTINGS_TAB_CONTROLS")
 	_set_tr(_audio_label, "SETTINGS_AUDIO")

@@ -20,9 +20,10 @@ const TURN_SPEED := 12.0
 const FEET_OFFSET := 0.02
 
 ## Steep cliff detection thresholds (slope gradient = dh / horiz_dist).
-const CLIMB_ENTER_GRADE := 0.58 ## ~30.1 deg slope triggers climb when moving uphill
-const CLIMB_EXIT_GRADE := 0.44  ## ~23.7 deg hysteresis floor to stay on cliff
-const CLIMB_DIR_MIN := 0.25     ## minimum uphill projection for diagonal cliff entry
+## Hillsides are walked. Only a near-cliff face, approached uphill, enters climb.
+const CLIMB_ENTER_GRADE := 0.88 ## ~41 deg, near the terrain slope limit
+const CLIMB_EXIT_GRADE := 0.72  ## ~36 deg hysteresis so a true face does not flicker
+const CLIMB_DIR_MIN := 0.45     ## must be heading up the face, not contouring it
 const CLIMB_PROBE_DIST := 0.45
 const SLOPE_SAMPLE_EPS := 0.35
 const CLIMB_BLEND_IN := 7.0
@@ -144,10 +145,12 @@ func step(
 	var mid_speed := lerpf(land_speed, RUN_SPEED * 0.92, run_amt)
 	var speed := lerpf(mid_speed, SWIM_SPEED if moving_input else SWIM_SPEED * 0.55, swim_amt)
 
-	var climb_base := CLIMB_FAST_SPEED if want_fast else CLIMB_SPEED
+	# Scramble along the slope at a careful fraction of the normal gait.
+	# slope_scale keeps that speed on the surface instead of in the air.
 	var dir_g := absf(dom_grad.dot(wish_xz)) if moving_input else dom_grad.length()
-	var slope_scale := clampf(1.0 / sqrt(1.0 + dir_g * dir_g), 0.28, 1.0)
-	speed = lerpf(speed, climb_base * slope_scale, climb_amt) * clamped_scale
+	var slope_scale := clampf(1.0 / sqrt(1.0 + dir_g * dir_g), 0.45, 1.0)
+	var scramble := land_speed * (0.62 if want_fast else 0.70)
+	speed = lerpf(speed, scramble * slope_scale, climb_amt) * clamped_scale
 
 	var accel := lerpf(lerpf(ACCEL, CLIMB_ACCEL, climb_amt), SWIM_ACCEL, swim_amt)
 	var decel := lerpf(lerpf(DECEL, CLIMB_DECEL, climb_amt), SWIM_DECEL, swim_amt)
@@ -169,20 +172,18 @@ func step(
 		next_vel.z = move_toward(current_vel.z, target_vel.z, accel * delta)
 		var move_yaw := atan2(wish.x, wish.z)
 		var target_yaw := move_yaw
-		if (want_climb or climb_amt > 0.25) and dom_grad.length_squared() > 0.0025:
+		# Keep looking where you travel. A small bias uphill stops a diagonal
+		# scramble from crabbing straight into the slope.
+		if climb_amt > 0.2 and dom_grad.length_squared() > 0.01:
 			var wall_dir := dom_grad.normalized()
 			var wall_yaw := atan2(wall_dir.x, wall_dir.y)
-			target_yaw = lerp_angle(move_yaw, wall_yaw, smoothstep(0.0, 0.45, climb_amt))
+			target_yaw = lerp_angle(move_yaw, wall_yaw, 0.18 * climb_amt)
 		facing_yaw = lerp_angle(facing_yaw, target_yaw, 1.0 - exp(-TURN_SPEED * delta))
 	else:
 		next_vel.x = move_toward(current_vel.x, 0.0, decel * delta)
 		next_vel.z = move_toward(current_vel.z, 0.0, decel * delta)
 		if not is_nan(facing_override_yaw):
 			facing_yaw = lerp_angle(facing_yaw, facing_override_yaw, 1.0 - exp(-TURN_SPEED * delta))
-		elif want_climb and dom_grad.length_squared() > 0.0025:
-			var wall_dir := dom_grad.normalized()
-			var wall_yaw := atan2(wall_dir.x, wall_dir.y)
-			facing_yaw = lerp_angle(facing_yaw, wall_yaw, 1.0 - exp(-TURN_SPEED * delta))
 
 	var next_pos := current_pos + Vector3(next_vel.x, 0.0, next_vel.z) * delta
 	var bed := _ground_y(next_pos.x, next_pos.z, terrain)

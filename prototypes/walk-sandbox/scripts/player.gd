@@ -9,7 +9,6 @@ const ACTION_BINDINGS := {
 	"action_build": &"build",
 }
 const STAMINA_MAX := 100.0
-const STAMINA_SPRINT_DRAIN := 20.0
 const STAMINA_REGEN := 15.0
 
 @onready var _visual_root: Node3D = $VisualRoot
@@ -125,23 +124,23 @@ func set_facing_yaw(yaw: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var step := _gameplay_delta(delta)
 	var allow_input := _is_gameplay_input_allowed()
 	if allow_input and Input.is_action_just_pressed("sprint"):
 		_run_mode = not _run_mode
 
 	var input_dir := Vector2.ZERO
 	if allow_input:
-		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		input_dir = _aim_move(Input.get_vector("move_left", "move_right", "move_forward", "move_back"))
 		_process_action_inputs()
 
 	var hold_active := allow_input and _is_any_action_held()
-	var action_frame := _actions.step(delta, _locomotion, input_dir, hold_active)
+	var action_frame := _actions.step(step, _locomotion, input_dir, hold_active)
 	var move_scale := float(action_frame.get("move_scale", 1.0))
 	var facing_override := float(action_frame.get("facing_override_yaw", 0.0)) if bool(action_frame.get("has_facing_override", false)) else NAN
 
-	var moving := input_dir.length_squared() > 0.0001
-	_tick_stamina(delta, moving)
-	var result := _locomotion.step(global_position, velocity, input_dir, _run_mode, terrain, delta, move_scale, facing_override)
+	_tick_stamina(step)
+	var result := _locomotion.step(global_position, velocity, input_dir, _run_mode, terrain, step, move_scale, facing_override)
 	velocity = result["velocity"] as Vector3
 	global_position = result["position"] as Vector3
 
@@ -153,9 +152,22 @@ func _physics_process(delta: float) -> void:
 		var wp: Dictionary = sky_time.call("get_weather_params") as Dictionary
 		snow_cover = float(wp.get("snow_cover", 0.0))
 
-	_visual.update_visual(_locomotion, delta, action_frame)
-	_audio.update_audio(_locomotion, terrain, global_position, delta, snow_cover)
-	_head_light.update_from_sky(sky_time, delta)
+	_visual.update_visual(_locomotion, step, action_frame)
+	_audio.update_audio(_locomotion, terrain, global_position, step, snow_cover)
+	_head_light.update_from_sky(sky_time, step)
+
+
+func _aim_move(input_dir: Vector2) -> Vector2:
+	var tree := get_tree()
+	if tree == null:
+		return input_dir
+	var rigs := tree.get_nodes_in_group(&"gu_camera_rigs")
+	if rigs.is_empty():
+		return input_dir
+	var rig: Node = rigs[0]
+	if rig.has_method("world_move"):
+		return rig.call("world_move", input_dir)
+	return input_dir
 
 
 func _process_action_inputs() -> void:
@@ -221,19 +233,16 @@ func _apply_action_beat_to_nearby_resource(action_id: StringName) -> void:
 		best.apply_harvest_hit(self)
 
 
-func _tick_stamina(delta: float, moving: bool) -> void:
-	# Sprint spends stamina. Walking and standing still regenerate it.
-	# Locomotion speed constants stay unchanged; an empty bar only drops run mode.
-	var sprinting := _run_mode and moving
-	if sprinting and _stats.get_value(&"stamina") <= 0.05:
-		_run_mode = false
-		sprinting = false
-	if sprinting:
-		_stats.modify_value(&"stamina", -STAMINA_SPRINT_DRAIN * delta)
-		if _stats.get_value(&"stamina") <= 0.05:
-			_run_mode = false
-	else:
-		_stats.modify_value(&"stamina", STAMINA_REGEN * delta)
+func _tick_stamina(delta: float) -> void:
+	# Shift toggles run and keeps it. An empty stamina bar must not force a walk.
+	_stats.modify_value(&"stamina", STAMINA_REGEN * delta)
+
+
+func _gameplay_delta(frame_delta: float) -> float:
+	var clock := get_node_or_null("/root/GameClock")
+	if clock != null and clock.has_method("gameplay_delta"):
+		return float(clock.call("gameplay_delta", frame_delta))
+	return frame_delta
 
 
 func _is_gameplay_input_allowed() -> bool:

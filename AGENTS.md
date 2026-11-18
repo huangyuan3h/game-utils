@@ -41,11 +41,11 @@ Engine: Godot 4.6, Forward Plus. Binary resolution (`find_godot_binary`): `--god
 
 `gu_core` registers these autoloads when the plugin is enabled (`godot/addons/gu_core/gu_core_plugin.gd`). Walk Sandbox also lists them in `project.godot`:
 
-`SettingsStore`, `InputRouter`, `AudioManager`, `SaveService`, `UIRouter`, `GameFlow`, `EventBus`, `PoolService`, `DevConsole`.
+`SettingsStore`, `InputRouter`, `AudioManager`, `SaveService`, `UIRouter`, `GameFlow`, `GameClock`, `EventBus`, `PoolService`, `DevConsole`.
 
 | Area | Files | Job |
 |------|--------|-----|
-| Flow | `gu_core/flow/game_flow.gd`, `scene_loader.gd` | Title / pause / world registration |
+| Flow | `gu_core/flow/game_flow.gd`, `game_clock.gd`, `scene_loader.gd` | Title / pause / world registration, gameplay time |
 | UI | `gu_core/ui/ui_router.gd`, `save_slots_panel.gd`, `keybind_list.gd` | Toasts, modals, transitions, save slots, keybinds |
 | Input | `gu_core/input/input_router.gd` | Action stack and rebinding |
 | Audio | `gu_core/audio/audio_manager.gd` | 3D SFX pool and buses |

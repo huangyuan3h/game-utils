@@ -29,7 +29,7 @@ func _assert(cond: bool, msg: String) -> void:
 
 
 func _run_all() -> void:
-	for name in ["SettingsStore", "InputRouter", "AudioManager", "SaveService", "UIRouter", "GameFlow", "EventBus", "PoolService", "DevConsole", "PlatformService"]:
+	for name in ["SettingsStore", "InputRouter", "AudioManager", "SaveService", "UIRouter", "GameFlow", "GameClock", "EventBus", "PoolService", "DevConsole", "PlatformService"]:
 		_assert(get_root().get_node_or_null(name) != null, "Autoload %s present" % name)
 
 	var console := get_root().get_node_or_null("DevConsole")

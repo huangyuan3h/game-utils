@@ -1,6 +1,6 @@
 class_name FontFallback
 extends RefCounted
-## Attaches a CJK SystemFont behind ThemeDB.fallback_font so mixed Latin and CJK text does not draw boxes.
+## Uses a CJK system font as the UI font so Chinese menu text draws instead of boxes.
 
 static func _names() -> PackedStringArray:
 	return PackedStringArray([
@@ -14,21 +14,26 @@ static func _names() -> PackedStringArray:
 
 
 static func apply() -> Font:
-	var extra := _cjk_font()
+	var cjk := _cjk_font()
 	var base := ThemeDB.fallback_font
-	if base == null:
-		ThemeDB.fallback_font = extra
-		return extra
-	if _has_cjk(base):
-		return base
-	var chain: Array[Font] = []
-	for item in base.fallbacks:
-		var existing := item as Font
-		if existing != null:
-			chain.append(existing)
-	chain.append(extra)
-	base.fallbacks = chain
-	return base
+	if base == cjk:
+		return cjk
+	if base != null and not _contains(cjk, base):
+		var chain: Array[Font] = [base]
+		for item in cjk.fallbacks:
+			var existing := item as Font
+			if existing != null and existing != base:
+				chain.append(existing)
+		cjk.fallbacks = chain
+	# Primary font, not a hidden fallback. Menus and popups then draw CJK glyphs.
+	ThemeDB.fallback_font = cjk
+	return cjk
+
+
+static func apply_theme(theme: Theme) -> void:
+	if theme == null:
+		return
+	theme.default_font = apply()
 
 
 static func is_applied() -> bool:
@@ -36,10 +41,24 @@ static func is_applied() -> bool:
 	return base != null and _has_cjk(base)
 
 
+static var _cached: SystemFont
+
+
 static func _cjk_font() -> SystemFont:
-	var font := SystemFont.new()
-	font.font_names = _names()
-	return font
+	if _cached == null:
+		_cached = SystemFont.new()
+		_cached.font_names = _names()
+	return _cached
+
+
+static func _contains(font: Font, needle: Font) -> bool:
+	if font == needle:
+		return true
+	for item in font.fallbacks:
+		var nested := item as Font
+		if nested != null and _contains(nested, needle):
+			return true
+	return false
 
 
 static func _has_cjk(font: Font) -> bool:

@@ -104,7 +104,7 @@ func _render_complete(quest_id: StringName) -> void:
 	var status := _tracker.get_quest_status(quest_id)
 	var line := Label.new()
 	line.text = "%s  COMPLETE" % String(status.get("title", quest_id))
-	line.add_theme_color_override("font_color", Color(0.65, 0.95, 0.7))
+	line.add_theme_color_override("font_color", Color(0.82, 0.82, 0.82))
 	add_child(line)
 	var timer := Timer.new()
 	timer.one_shot = true

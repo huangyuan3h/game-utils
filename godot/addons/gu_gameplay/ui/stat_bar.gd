@@ -13,9 +13,9 @@ var _bar := ProgressBar.new()
 func _init() -> void:
 	add_theme_constant_override("separation", 2)
 	_title.add_theme_font_size_override("font_size", 13)
-	_title.add_theme_color_override("font_color", Color(0.93, 0.95, 0.9))
+	_title.add_theme_color_override("font_color", Color(0.92, 0.92, 0.92))
 	_value.add_theme_font_size_override("font_size", 12)
-	_value.add_theme_color_override("font_color", Color(0.78, 0.9, 0.84))
+	_value.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
 	_bar.min_value = 0.0
 	_bar.max_value = 1.0
 	_bar.step = 0.0

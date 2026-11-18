@@ -14,8 +14,10 @@ const WorldLocatorScript = preload("res://scripts/map/world_locator.gd")
 const SeaMesh = preload("res://scripts/terrain/sea_mesh.gd")
 const LakeMesh = preload("res://scripts/terrain/lake_mesh.gd")
 const RiverMesh = preload("res://scripts/terrain/river_mesh.gd")
+const MapRivers = preload("res://scripts/map/map_rivers.gd")
 const LandPropsMesh = preload("res://scripts/terrain/land_props_mesh.gd")
 const WorldBeaconScript = preload("res://scripts/world/world_beacon.gd")
+const SkyTimeScript = preload("res://scripts/sky_time.gd")
 
 const InputRouterScript = preload("res://addons/gu_core/input/input_router.gd")
 const SettingsStoreScript = preload("res://addons/gu_core/settings/settings_store.gd")
@@ -89,6 +91,11 @@ class MockWorld extends Node:
 
 var _ran: bool = false
 var _quit_through_flow: bool = false
+var _clock_timer_fired: bool = false
+
+
+func _on_game_clock_timer() -> void:
+	_clock_timer_fired = true
 
 
 func _process(_delta: float) -> bool:
@@ -121,6 +128,7 @@ func _assert(cond: bool, msg: String) -> void:
 func _run_all() -> void:
 	_test_map_data_and_generator()
 	_test_terrain_build_context_and_meshes()
+	_test_river_channel_and_confluence()
 	_test_character_locomotion()
 	_test_character_climbing()
 	_test_input_router()
@@ -151,9 +159,11 @@ func _run_all() -> void:
 	_test_loading_and_shader_warmup()
 	_test_status_cooldown_and_tags()
 	_test_hitbox_and_juice()
+	_test_game_clock()
 	_test_input_glyphs_focus_tooltip_coach()
 	_test_bug_report_and_platform()
 	_test_ai_perception()
+	_test_summit_star_clarity()
 	_test_play_smoke()
 
 
@@ -214,11 +224,72 @@ func _test_terrain_build_context_and_meshes() -> void:
 	var lpm := LandPropsMesh.new()
 	lpm.build(ctx, props_root)
 	_assert(props_root.get_child_count() > 0, "LandPropsMesh builds foliage/prop batches from TerrainBuildContext")
+	var trees_in_river := 0
+	for tree_name in ["PineTrees", "BroadleafTrees"]:
+		var batch := props_root.get_node_or_null(tree_name) as MultiMeshInstance3D
+		if batch == null or batch.multimesh == null:
+			continue
+		for ti in batch.multimesh.instance_count:
+			var origin := batch.multimesh.get_instance_transform(ti).origin
+			if lpm._too_close_to_river(origin.x, origin.z):
+				trees_in_river += 1
+	_assert(trees_in_river == 0, "Trees stay off the river bank")
 	_assert(lpm._near_clear_spot(spawn.x, spawn.z, 2.8), "LandPropsMesh respects dynamic clear_spots for spawn")
 	if not pois.is_empty():
 		var p0 := pois[0]["position"] as Vector3
 		_assert(lpm._near_clear_spot(p0.x, p0.z, 2.8), "LandPropsMesh respects dynamic clear_spots for POIs")
 	props_root.free()
+
+
+func _test_river_channel_and_confluence() -> void:
+	var found_trib := false
+	for seed in [108, 42, 7, 19, 64, 3]:
+		var data: MapData = MapGen.generate(seed, {"relief": 1.0})
+		if data.rivers.size() < 2:
+			continue
+		var main: PackedVector2Array = data.rivers[0]
+		var gap := INF
+		for ri in range(1, data.rivers.size()):
+			var trib: PackedVector2Array = data.rivers[ri]
+			if trib.is_empty():
+				continue
+			var tip: Vector2 = trib[trib.size() - 1]
+			var d := MapRivers._dist_to_polyline(tip, main)
+			if d < gap:
+				gap = d
+		if gap > 6.0:
+			continue
+		_assert(
+			gap > 0.2 and gap < 3.4,
+			"Tributary meets the main bank without crossing it (seed %d)" % seed
+		)
+		var ctx := TerrainBuildContext.new(data)
+		var mesh := RiverMesh.new().build(ctx).get("mesh") as ArrayMesh
+		_assert(mesh != null, "River mesh builds for a joined watershed")
+		if mesh == null:
+			return
+		var arrays := mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var floating := 0
+		var buried := 0
+		var checked := 0
+		for i in range(0, verts.size() - 1, 2):
+			var col := colors[i]
+			if col.g > 0.45 or col.b > 0.45:
+				continue
+			var mid := (verts[i] + verts[i + 1]) * 0.5
+			var bed := ctx.sample_height(mid.x, mid.z)
+			checked += 1
+			if mid.y - bed > 1.35:
+				floating += 1
+			elif bed > mid.y + 0.55:
+				buried += 1
+		_assert(checked > 8, "Inland river stations are checked")
+		_assert(floating == 0 and buried == 0, "River sheet stays in the carved channel (seed %d)" % seed)
+		found_trib = true
+		break
+	_assert(found_trib, "A generated map includes a tributary confluence")
 
 
 func _test_character_locomotion() -> void:
@@ -282,6 +353,19 @@ func _test_character_climbing() -> void:
 	_assert(loco.state_label == "WALK", "Gentle 0.25 slope stays in WALK state")
 	_assert(loco.climb_amt < 0.05, "Gentle slope does not activate climb_amt")
 
+	# 1b) A walkable hillside (grade 0.65, ~33 deg) stays on foot.
+	loco.reset()
+	terrain.height_fn = func(x: float, _z: float) -> float:
+		return 1.0 + maxf(0.0, x) * 0.65
+	pos = Vector3(0.0, 1.0, 0.0)
+	vel = Vector3.ZERO
+	for _i in 24:
+		var res := loco.step(pos, vel, Vector2(1.0, 0.0), false, terrain, 0.05)
+		pos = res["position"] as Vector3
+		vel = res["velocity"] as Vector3
+	_assert(loco.state_label == "WALK", "Hillside grade 0.65 is walked, not climbed")
+	_assert(loco.climb_amt < 0.05, "Hillside does not activate climb_amt")
+
 	# 2) Steep cliff (flat -> 1.0 grade cliff from x=1.5..6.5 -> flat plateau at x>=6.5)
 	loco.reset()
 	terrain.height_fn = func(x: float, _z: float) -> float:
@@ -302,7 +386,8 @@ func _test_character_climbing() -> void:
 	_assert(entered_climb, "Steep 1.0-grade cliff triggers CLIMB state")
 	_assert(loco.climb_amt > 0.8, "Climb blend reaches >0.8 on steep cliff")
 	_assert(loco.facing_yaw > 1.2 and loco.facing_yaw < 1.9, "Climber faces uphill (+X) into the cliff")
-	_assert(loco.speed_3d <= CharacterLocomotion.CLIMB_SPEED + 0.35, "3D climb speed is regulated near CLIMB_SPEED")
+	_assert(loco.speed_3d < CharacterLocomotion.WALK_SPEED * 0.92, "Steep scramble is slower than a flat walk")
+	_assert(loco.speed_3d > 1.1, "Steep scramble still makes progress")
 
 	# 3) Stopping mid-cliff keeps CLIMB state (clinging instead of flickering to WALK)
 	for _i in 15:
@@ -453,6 +538,8 @@ func _test_settings_locale() -> void:
 	var shipped_locales: PackedStringArray = shipped.get_locales()
 	_assert(shipped_locales.has("en") and shipped_locales.has("zh"), "Shipped ui_i18n.csv exposes en and zh")
 	_assert(shipped.message("zh", "SETTINGS_LANGUAGE") == "语言", "Shipped zh translation for SETTINGS_LANGUAGE")
+	_assert(shipped.message("zh", "TITLE_CONTINUE") == "继续", "Title screen has a Chinese string")
+	_assert(shipped.get_locales().size() == 2, "Locale aliases stay out of the language list")
 	_assert(shipped.locale_label("zh") == "中文", "Locale autonym is read from that locale")
 	shipped.unload()
 
@@ -705,11 +792,16 @@ func _test_protoss_ui_skin() -> void:
 	for p: String in sfx_paths:
 		_assert(load(p) is AudioStream, "Protoss UI SFX loads cleanly: %s" % p)
 
+	var plain := load("res://addons/gu_core/ui/default_theme.tres") as Theme
+	_assert(plain != null, "Gray theme loads cleanly")
+	if plain != null:
+		_assert(plain.get_stylebox("panel", "PanelContainer") is StyleBoxFlat, "Gray theme uses a flat panel")
+		_assert(plain.get_stylebox("normal", "Button") is StyleBoxFlat, "Gray theme uses a flat button")
 	var ui := get_root().get_node_or_null("UIRouter")
 	_assert(ui != null, "UIRouter autoload available for theme check")
 	if ui != null:
 		var stack_root := ui.get_node_or_null("UIRouterLayer/ScreenStack") as Control
-		_assert(stack_root != null and stack_root.theme != null, "UIRouter ScreenStack has active Theme attached")
+		_assert(stack_root != null and stack_root.theme == plain, "UIRouter uses the gray theme")
 
 	var screen_paths := [
 		"res://scenes/ui/title_screen.tscn",
@@ -1120,6 +1212,16 @@ func _test_camera_rig_shake() -> void:
 
 	rig.set_zoom(0.2)
 	_assert(is_equal_approx(rig.get_zoom(), CameraRig.ZOOM_MIN), "CameraRig clamps zoom min")
+	rig.set_zoom(1.0)
+
+	rig.set_yaw(PI * 0.5)
+	_assert(is_equal_approx(rig.get_yaw(), PI * 0.5), "CameraRig stores yaw")
+	rig._process(2.0)
+	var orbited := target.global_position + Basis(Vector3.UP, PI * 0.5) * CameraRig.DEFAULT_OFFSET
+	_assert(rig.global_position.distance_to(orbited) < 0.05, "CameraRig orbits around the target")
+	var ahead := rig.world_move(Vector2(0.0, -1.0))
+	_assert(ahead.distance_to(Vector2(-1.0, 0.0)) < 0.02, "Forward follows the camera yaw")
+	rig.set_yaw(0.0)
 
 	rig.add_shake(0.5, 0.4)
 	_assert(rig.get_shake_remaining() > 0.35, "CameraRig.add_shake schedules impulse")
@@ -1811,6 +1913,19 @@ func _test_save_slots_panel_and_keybind_list() -> void:
 		if locales is PackedStringArray or locales is Array:
 			locale_count = locales.size()
 	_assert(lang != null and locale_count > 0 and lang.item_count == locale_count, "SettingsPanel language options match SettingsStore locales")
+	var zh_index := -1
+	for i in lang.item_count:
+		if lang.get_item_text(i) == "中文":
+			zh_index = i
+	_assert(zh_index >= 0, "SettingsPanel lists 中文")
+	var prev_ui_locale := TranslationServer.get_locale()
+	TranslationServer.set_locale("zh")
+	var title := (load("res://scenes/ui/title_screen.tscn") as PackedScene).instantiate()
+	get_root().add_child(title)
+	_assert((title.get_node("%ContinueButton") as Button).text == "继续", "Title screen switches to Chinese")
+	get_root().remove_child(title)
+	title.free()
+	TranslationServer.set_locale(prev_ui_locale)
 	get_root().remove_child(sp_inst)
 	sp_inst.free()
 	if spawned_store != null:
@@ -2103,11 +2218,13 @@ func _test_hitbox_and_juice() -> void:
 	_assert(is_equal_approx(applied, 10.0), "Hitbox damages a hostile hurtbox")
 	_assert(juice.floater_count == 1 and is_equal_approx(juice.last_amount, 10.0), "Juice bus records one floater for the hit")
 	_assert(camera.get_shake_remaining() > 0.0, "Juice bus shakes the camera")
-	_assert(Engine.time_scale < 0.99, "Juice bus applies a short hitstop")
+	var clock := get_root().get_node_or_null("GameClock")
+	_assert(clock != null and is_equal_approx(float(clock.call("get_scale")), 0.2), "Juice bus applies a short hitstop")
+	_assert(is_equal_approx(Engine.time_scale, 1.0), "Hitstop leaves Engine.time_scale unchanged")
 	var blocked := hit.strike(hurt, false, Vector3.FORWARD)
 	_assert(is_equal_approx(blocked, 0.0), "Invulnerability frames ignore the second hit")
 	juice.advance(1.0)
-	_assert(is_equal_approx(Engine.time_scale, 1.0), "Hitstop restores time scale")
+	_assert(clock != null and is_equal_approx(float(clock.call("get_scale")), 1.0), "Hitstop restores gameplay scale")
 
 	var ally := HurtboxScript.new()
 	ally.health = HealthComponent.new()
@@ -2116,11 +2233,63 @@ func _test_hitbox_and_juice() -> void:
 	get_root().add_child(ally)
 	_assert(is_equal_approx(hit.strike(ally, false, Vector3.FORWARD), 0.0), "Same-faction hits are ignored")
 
-	Engine.time_scale = 1.0
+	if clock != null:
+		clock.call("pop_scale", &"hitstop")
 	juice.queue_free()
 	hurt.queue_free()
 	hit.queue_free()
 	ally.queue_free()
+
+
+func _test_game_clock() -> void:
+	var clock := get_root().get_node_or_null("GameClock")
+	_assert(clock != null, "Autoload GameClock exists")
+	if clock == null:
+		return
+	clock.call("pop_scale", &"hitstop")
+	clock.call("reset_world_time")
+	clock.call("set_gameplay_running", false)
+	_assert(is_equal_approx(float(clock.call("gameplay_delta", 0.5)), 0.0), "Paused gameplay delta is zero")
+	_assert(is_equal_approx(float(clock.call("ui_delta", 0.5)), 0.5), "UI delta ignores pause")
+
+	clock.call("set_gameplay_running", true)
+	clock.call("push_scale", &"hitstop", 0.2)
+	_assert(is_equal_approx(float(clock.call("get_scale")), 0.2), "Hitstop scale is 0.2")
+	_assert(is_equal_approx(float(clock.call("gameplay_delta", 1.0)), 0.2), "Hitstop scales gameplay delta")
+	_assert(is_equal_approx(Engine.time_scale, 1.0), "Hitstop does not change Engine.time_scale")
+
+	_clock_timer_fired = false
+	var timer_id := int(clock.call("after_gameplay", 0.5, Callable(self, "_on_game_clock_timer")))
+	clock.call("advance_frame", 1.0)
+	_assert(timer_id > 0 and not _clock_timer_fired, "Gameplay timer waits for scaled time")
+	clock.call("pop_scale", &"hitstop")
+	clock.call("advance_frame", 0.5)
+	_assert(_clock_timer_fired, "Gameplay timer fires after scaled time elapses")
+
+	var exported: Dictionary = clock.call("export_state") as Dictionary
+	var saved_seconds := float(exported.get("world_seconds", -1.0))
+	_assert(is_equal_approx(saved_seconds, 0.7), "World seconds accumulate scaled gameplay time")
+
+	var saves := get_root().get_node_or_null("SaveService")
+	_assert(saves != null, "SaveService is available for the clock roundtrip")
+	if saves != null:
+		var err := int(saves.call("save_slot", "clock_slot", {"world": {"seed": 1}}))
+		_assert(err == OK, "Clock section saves with the slot")
+		clock.call("reset_world_time")
+		var loaded: Dictionary = saves.call("load_slot", "clock_slot") as Dictionary
+		_assert(bool(loaded.get("ok", false)), "Clock slot loads")
+		saves.call("apply_saveables", loaded.get("data", {}))
+		var restored: Dictionary = clock.call("export_state") as Dictionary
+		_assert(is_equal_approx(float(restored.get("world_seconds", -1.0)), saved_seconds), "Save restores world_seconds")
+		saves.call("delete_slot", "clock_slot")
+
+	var flow := get_root().get_node_or_null("GameFlow")
+	if flow != null:
+		flow.call("start_new_game", {"seed": 1})
+		var cleared: Dictionary = clock.call("export_state") as Dictionary
+		_assert(is_equal_approx(float(cleared.get("world_seconds", -1.0)), 0.0), "New game resets world time")
+	clock.call("set_gameplay_running", false)
+	clock.call("pop_scale", &"hitstop")
 
 
 func _test_input_glyphs_focus_tooltip_coach() -> void:
@@ -2167,12 +2336,18 @@ func _test_bug_report_and_platform() -> void:
 	var console := get_root().get_node_or_null("DevConsole")
 	_assert(console != null, "DevConsole autoload can write a bug pack")
 	if console != null:
+		var clock := get_root().get_node_or_null("GameClock")
+		if clock != null:
+			clock.call("apply_state", {"world_seconds": 12.5})
 		var written := str(console.call("write_bug_report", "user://bug_reports/unit", Vector3(1, 2, 3)))
 		_assert(FileAccess.file_exists(written.path_join("log.txt")), "Bug pack contains the log")
 		_assert(FileAccess.file_exists(written.path_join("screenshot.png")), "Bug pack contains a screenshot")
 		_assert(FileAccess.file_exists(written.path_join("save.json")), "Bug pack contains a save copy")
 		var position_text := FileAccess.get_file_as_string(written.path_join("position.json"))
 		_assert("1" in position_text and "2" in position_text and "3" in position_text, "Bug pack records the player position")
+		_assert("world_seconds" in position_text and "12.5" in position_text, "Bug pack records world time")
+		if clock != null:
+			clock.call("reset_world_time")
 
 	var platform := get_root().get_node_or_null("PlatformService")
 	_assert(platform != null, "PlatformService autoload is registered")
@@ -2198,6 +2373,17 @@ func _test_ai_perception() -> void:
 	_assert(AiPerceptionScript.hears(origin, Vector3(1, 0, 0), 4.0), "Hearing range includes a nearby noise")
 	agent.tick(0.1, origin, forward, Vector3(0, 0, -3), false, Vector3(1, 0, 0))
 	_assert(agent.blackboard.has_value(&"heard_position"), "A heard noise is written to the blackboard")
+
+
+func _test_summit_star_clarity() -> void:
+	var shore := float(SkyTimeScript.altitude_clarity(1.1, 0.95, 11.0))
+	var ridge := float(SkyTimeScript.altitude_clarity(5.0, 0.95, 11.0))
+	var summit := float(SkyTimeScript.altitude_clarity(10.4, 0.95, 11.0))
+	_assert(shore < 0.05, "Night sky stays dim near the shore")
+	_assert(ridge > shore and ridge < summit, "Star clarity rises from the ridge toward the summit")
+	_assert(summit > 0.95, "A summit night is clear enough to see the stars")
+	var shader := load("res://shaders/sky_weather.gdshader") as Shader
+	_assert(shader != null and shader.code.contains("altitude_clarity"), "Sky shader exposes summit star clarity")
 
 
 func _test_play_smoke() -> void:

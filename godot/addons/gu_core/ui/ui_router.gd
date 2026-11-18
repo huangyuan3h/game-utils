@@ -8,8 +8,8 @@ signal stack_emptied
 signal toast_shown(message: String, tone: StringName)
 signal transition_finished
 
-const DEFAULT_THEME_PATH := "res://addons/gu_core/ui/protoss/protoss_theme.tres"
-const FALLBACK_THEME_PATH := "res://addons/gu_core/ui/default_theme.tres"
+const DEFAULT_THEME_PATH := "res://addons/gu_core/ui/default_theme.tres"
+const FontFallbackScript := preload("res://addons/gu_core/i18n/font_fallback.gd")
 const CONFIRM_SCREEN_ID := &"__confirm__"
 const MAX_ACTIVE_TOASTS := 3
 
@@ -80,7 +80,7 @@ class ConfirmDialog extends Control:
 		title_lbl.text = title_text
 		title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		title_lbl.add_theme_font_size_override("font_size", 20)
-		title_lbl.add_theme_color_override("font_color", Color(0.95, 0.81, 0.40, 1.0))
+		title_lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95, 1.0))
 		vbox.add_child(title_lbl)
 
 		var body_lbl := Label.new()
@@ -432,13 +432,13 @@ func _spawn_toast_banner(message: String, duration: float, tone: StringName) -> 
 func _tone_color(tone: StringName) -> Color:
 	match tone:
 		&"success":
-			return Color(0.31, 0.95, 0.78, 1.0)
+			return Color(0.95, 0.95, 0.95, 1.0)
 		&"warning":
-			return Color(0.96, 0.78, 0.28, 1.0)
+			return Color(0.78, 0.78, 0.78, 1.0)
 		&"error":
-			return Color(1.0, 0.45, 0.42, 1.0)
+			return Color(0.62, 0.62, 0.62, 1.0)
 		_:
-			return Color(0.22, 0.91, 1.0, 1.0)
+			return Color(0.9, 0.9, 0.9, 1.0)
 
 
 func _ensure_layer() -> void:
@@ -455,8 +455,7 @@ func _ensure_layer() -> void:
 		_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if ResourceLoader.exists(DEFAULT_THEME_PATH):
 			_root.theme = load(DEFAULT_THEME_PATH) as Theme
-		elif ResourceLoader.exists(FALLBACK_THEME_PATH):
-			_root.theme = load(FALLBACK_THEME_PATH) as Theme
+			FontFallbackScript.apply_theme(_root.theme)
 		_layer.add_child(_root)
 
 	if _overlay_layer == null or not is_instance_valid(_overlay_layer):

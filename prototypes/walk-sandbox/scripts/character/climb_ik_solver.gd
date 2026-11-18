@@ -84,11 +84,11 @@ func _arm_cycle_offset(phase: float, side_sign: float, climb_lateral: float) -> 
 	# +Y = reach overhead, +Z = toward cliff face, +X = character left.
 	var lat := climb_lateral * 0.16
 	var keys: Array[Vector3] = [
-		Vector3(side_sign * 0.24, -0.05, 0.50),             # 0.00: bottom of pull, release hold
-		Vector3(side_sign * 0.30 + lat, 0.45, 0.30),        # 0.22: lift hand away from rock, reach up
-		Vector3(side_sign * 0.22 + lat, 0.86, 0.46),        # 0.45: grab high handhold on cliff
-		Vector3(side_sign * 0.22, 0.52, 0.52),              # 0.72: pull body upward along cliff
-		Vector3(side_sign * 0.24, 0.15, 0.52),              # 0.90: finish pull
+		Vector3(side_sign * 0.24, -0.05, 0.30),             # 0.00: bottom of pull, release hold
+		Vector3(side_sign * 0.30 + lat, 0.45, 0.16),        # 0.22: lift hand away from rock, reach up
+		Vector3(side_sign * 0.22 + lat, 0.86, 0.28),        # 0.45: grab high handhold on cliff
+		Vector3(side_sign * 0.22, 0.52, 0.30),              # 0.72: pull body upward along cliff
+		Vector3(side_sign * 0.24, 0.15, 0.30),              # 0.90: finish pull
 	]
 	var marks: Array[float] = [0.0, 0.22, 0.45, 0.72, 0.90]
 	return _eval_cycle(keys, marks, phase)
@@ -106,11 +106,11 @@ func _leg_cycle_offset(phase: float, side_sign: float, climb_lateral: float) -> 
 	# -Y = down, +Z = forward onto rock footholds, +X = character left (knee flares out).
 	var lat := climb_lateral * 0.14
 	var keys: Array[Vector3] = [
-		Vector3(side_sign * 0.14, -0.92, 0.22),             # 0.00: leg extended after push
-		Vector3(side_sign * 0.24 + lat, -0.62, 0.30),       # 0.22: tuck knee, lift foot off rock
-		Vector3(side_sign * 0.20 + lat, -0.44, 0.56),       # 0.45: plant foot high on foothold
-		Vector3(side_sign * 0.16, -0.72, 0.42),             # 0.72: push body upward
-		Vector3(side_sign * 0.14, -0.88, 0.26),             # 0.90: finish leg drive
+		Vector3(side_sign * 0.14, -0.92, 0.12),             # 0.00: leg extended after push
+		Vector3(side_sign * 0.24 + lat, -0.62, 0.16),       # 0.22: tuck knee, lift foot off rock
+		Vector3(side_sign * 0.20 + lat, -0.44, 0.30),       # 0.45: plant foot high on foothold
+		Vector3(side_sign * 0.16, -0.72, 0.22),             # 0.72: push body upward
+		Vector3(side_sign * 0.14, -0.88, 0.14),             # 0.90: finish leg drive
 	]
 	var marks: Array[float] = [0.0, 0.22, 0.45, 0.72, 0.90]
 	return _eval_cycle(keys, marks, phase)
@@ -162,7 +162,7 @@ func _pose_climb_arm(
 	# Idle clinging pose: steady asymmetric rock grip with subtle breathing sway
 	var idle_y := 0.56 if side_sign > 0.0 else 0.38
 	var breathe := sin(climb_t * 1.4 + side_sign * 0.6) * 0.025
-	var idle_dir := Vector3(side_sign * 0.28, idle_y + breathe, 0.52).normalized()
+	var idle_dir := Vector3(side_sign * 0.28, idle_y + breathe, 0.30).normalized()
 	var idle_target := origin + idle_dir * (total * 0.82)
 
 	var target := idle_target.lerp(move_target, climb_move)
@@ -197,7 +197,7 @@ func _pose_climb_leg(
 	# Idle foothold stance: knees slightly bent, bracing against the rock face
 	var idle_y := -0.62 if side_sign < 0.0 else -0.78
 	var brace := sin(climb_t * 1.4) * 0.015
-	var idle_dir := Vector3(side_sign * 0.18, idle_y + brace, 0.42).normalized()
+	var idle_dir := Vector3(side_sign * 0.18, idle_y + brace, 0.22).normalized()
 	var idle_target := origin + idle_dir * (total * 0.80)
 
 	var foot_target := idle_target.lerp(move_target, climb_move)
@@ -205,4 +205,4 @@ func _pose_climb_leg(
 	LimbIKUtil.two_bone(_skeleton, thigh, shin, origin, foot_target, pole, lens.x, lens.y)
 	if foot >= 0:
 		var shin_dir := (foot_target - LimbIKUtil.bone_global_pose(_skeleton, shin).origin).normalized()
-		LimbIKUtil.aim_bone_y(_skeleton, foot, (shin_dir + Vector3(0.0, -0.15, 0.55)).normalized())
+		LimbIKUtil.aim_bone_y(_skeleton, foot, (shin_dir + Vector3(0.0, -0.15, 0.28)).normalized())

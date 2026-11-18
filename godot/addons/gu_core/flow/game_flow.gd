@@ -57,6 +57,7 @@ func enter_title() -> void:
 
 
 func start_new_game(opts: Dictionary = {}) -> void:
+	_reset_clock()
 	_set_tree_paused(false)
 	_set_state(State.LOADING)
 	var ui := _ui_router()
@@ -77,6 +78,7 @@ func load_game(slot: String = "") -> bool:
 		push_warning("GameFlow.load_game failed: %s" % str(res.get("error", "unknown")))
 		return false
 
+	_reset_clock()
 	_set_tree_paused(false)
 	_set_state(State.LOADING)
 	var ui := _ui_router()
@@ -255,6 +257,9 @@ func _set_state(next_state: State) -> void:
 	var prev := state
 	state = next_state
 	state_changed.emit(int(prev), int(next_state))
+	var clock := _clock()
+	if clock != null and clock.has_method("set_gameplay_running"):
+		clock.call("set_gameplay_running", next_state == State.PLAYING)
 
 
 func _set_tree_paused(paused: bool) -> void:
@@ -268,6 +273,16 @@ func _ui_router() -> Node:
 
 func _save_service() -> Node:
 	return get_node_or_null("/root/SaveService")
+
+
+func _clock() -> Node:
+	return get_node_or_null("/root/GameClock")
+
+
+func _reset_clock() -> void:
+	var clock := _clock()
+	if clock != null and clock.has_method("reset_world_time"):
+		clock.call("reset_world_time")
 
 
 func _ensure_cancel_action() -> void:

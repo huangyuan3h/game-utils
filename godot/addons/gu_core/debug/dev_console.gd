@@ -127,7 +127,12 @@ func write_bug_report(dir_path: String = "user://bug_reports/latest", position: 
 		var slot_path := str(save_svc.call("get_slot_path", "autosave"))
 		if FileAccess.file_exists(slot_path):
 			save_text = FileAccess.get_file_as_string(slot_path)
-	return BugReportScript.write_pack(dir_path, position, save_text)
+	var world_seconds := 0.0
+	var clock := get_node_or_null("/root/GameClock")
+	if clock != null and clock.has_method("export_state"):
+		var clock_state: Dictionary = clock.call("export_state") as Dictionary
+		world_seconds = float(clock_state.get("world_seconds", 0.0))
+	return BugReportScript.write_pack(dir_path, position, save_text, world_seconds)
 
 
 func _register_builtins() -> void:

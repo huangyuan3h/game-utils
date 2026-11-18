@@ -4,6 +4,9 @@ extends RefCounted
 
 const MapGen = preload("res://scripts/map_generator.gd")
 const MapLakes = preload("res://scripts/map/map_lakes.gd")
+const MapRivers = preload("res://scripts/map/map_rivers.gd")
+## Keep trunks and canopies off the channel. Gap is measured past the bank.
+const TREE_RIVER_GAP := 3.2
 
 var _ctx: TerrainBuildContext
 
@@ -165,8 +168,9 @@ func build(ctx: TerrainBuildContext, props_root: Node3D) -> void:
 			if h < local_wy + 0.38 or slope > 0.40:
 				continue
 
+			var clear_of_river := not _too_close_to_river(wx, wz)
 			if b == MapGen.Biome.FOREST:
-				if rng.randf() < 0.54:
+				if clear_of_river and rng.randf() < 0.54:
 					var ts := rng.randf_range(0.82, 1.38)
 					var up_dir := Vector3.UP.lerp(nrm, 0.10).normalized()
 					var tb := _align_up(up_dir, rng.randf() * TAU).scaled(Vector3(ts, ts * rng.randf_range(0.95, 1.25), ts))
@@ -182,7 +186,7 @@ func build(ctx: TerrainBuildContext, props_root: Node3D) -> void:
 					_add_shrub(wx, h, wz, rng, shrub_xforms, shrub_cols, shrub_custom)
 
 			elif b == MapGen.Biome.MEADOW or b == MapGen.Biome.GRASS:
-				if patch > 0.46 and rng.randf() < 0.24:
+				if clear_of_river and patch > 0.46 and rng.randf() < 0.24:
 					var ts2 := rng.randf_range(0.78, 1.22)
 					var tb2 := _align_up(Vector3.UP.lerp(nrm, 0.10).normalized(), rng.randf() * TAU).scaled(Vector3(ts2, ts2, ts2))
 					broad_xforms.append(Transform3D(tb2, Vector3(wx, h - 0.08, wz)))
@@ -192,7 +196,7 @@ func build(ctx: TerrainBuildContext, props_root: Node3D) -> void:
 					_add_shrub(wx, h, wz, rng, shrub_xforms, shrub_cols, shrub_custom)
 
 			elif b == MapGen.Biome.MOUNTAIN and h < float(data.h_max) - 1.8:
-				if rng.randf() < 0.14:
+				if clear_of_river and rng.randf() < 0.14:
 					var ts3 := rng.randf_range(0.65, 1.05)
 					var tb3 := _align_up(Vector3.UP.lerp(nrm, 0.08).normalized(), rng.randf() * TAU).scaled(Vector3(ts3, ts3, ts3))
 					pine_xforms.append(Transform3D(tb3, Vector3(wx, h - 0.10, wz)))
@@ -309,6 +313,21 @@ func _local_water_y(wx: float, wz: float) -> float:
 		if p.distance_to(c) <= r * 1.28:
 			wy = maxf(wy, float(lake["water_y"]))
 	return wy
+
+
+func _too_close_to_river(x: float, z: float) -> bool:
+	if _ctx == null or _ctx.data == null:
+		return false
+	var p := Vector2(x, z)
+	for river in _ctx.data.rivers:
+		var pts: PackedVector2Array = river
+		if pts.size() < 2:
+			continue
+		var along := MapRivers._along_polyline(p, pts)
+		var bank := MapGen.river_half_width(along)
+		if MapRivers._dist_to_polyline(p, pts) < bank + TREE_RIVER_GAP:
+			return true
+	return false
 
 
 func _near_clear_spot(x: float, z: float, radius: float) -> bool:

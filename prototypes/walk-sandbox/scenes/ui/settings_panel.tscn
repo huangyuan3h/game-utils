@@ -1,26 +1,7 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/settings_panel.gd" id="1_settings"]
-[ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_holo_panel.gdshader" id="2_holo"]
-[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/protoss_crest.svg" id="3_crest"]
-[ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_psionic_glow.gdshader" id="4_glow"]
 [ext_resource type="Script" path="res://addons/gu_core/ui/keybind_list.gd" id="5_keybinds"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMat_holo"]
-shader = ExtResource("2_holo")
-shader_parameter/scan_color = Color(0.22, 0.91, 1, 1)
-shader_parameter/gold_rim_color = Color(0.95, 0.81, 0.4, 1)
-shader_parameter/grid_alpha = 0.045
-shader_parameter/scan_alpha = 0.075
-shader_parameter/scan_speed = 0.22
-shader_parameter/rim_alpha = 0.065
-
-[sub_resource type="ShaderMaterial" id="ShaderMat_glow"]
-shader = ExtResource("4_glow")
-shader_parameter/base_color = Color(0.08, 0.5, 0.65, 0.75)
-shader_parameter/pulse_color = Color(0.22, 0.91, 1, 1)
-shader_parameter/flow_speed = 0.75
-shader_parameter/pulse_strength = 0.7
 
 [node name="SettingsPanel" type="Control"]
 layout_mode = 3
@@ -38,7 +19,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.012, 0.025, 0.06, 0.64)
+color = Color(0.06, 0.06, 0.06, 0.64)
 
 [node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -53,40 +34,23 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(510, 0)
 layout_mode = 2
 
-[node name="HoloOverlay" type="ColorRect" parent="Center/Panel"]
-layout_mode = 2
-mouse_filter = 2
-material = SubResource("ShaderMat_holo")
-
 [node name="VBox" type="VBoxContainer" parent="Center/Panel"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
 [node name="Tag" type="Label" parent="Center/Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 0.92)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.92)
 theme_override_font_sizes/font_size = 11
 text = "KHALAI CALIBRATION // PARAMETERS"
 horizontal_alignment = 1
 
 [node name="Header" type="Label" parent="Center/Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.91, 0.79, 1)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
 theme_override_font_sizes/font_size = 24
 text = "SYSTEM MATRIX"
 horizontal_alignment = 1
-
-[node name="Crest" type="TextureRect" parent="Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 20)
-layout_mode = 2
-texture = ExtResource("3_crest")
-stretch_mode = 3
-
-[node name="PsiBeam" type="ColorRect" parent="Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 2)
-layout_mode = 2
-mouse_filter = 2
-material = SubResource("ShaderMat_glow")
 
 [node name="TabRow" type="HBoxContainer" parent="Center/Panel/VBox"]
 layout_mode = 2
@@ -114,7 +78,7 @@ theme_override_constants/separation = 10
 [node name="AudioSectionLabel" type="Label" parent="Center/Panel/VBox/SystemSection"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "SETTINGS_AUDIO"
 
@@ -141,7 +105,7 @@ value = 1.0
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 text = "100%"
 horizontal_alignment = 2
 
@@ -168,7 +132,7 @@ value = 0.9
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 text = "90%"
 horizontal_alignment = 2
 
@@ -195,7 +159,7 @@ value = 0.85
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 text = "85%"
 horizontal_alignment = 2
 
@@ -222,7 +186,7 @@ value = 0.75
 unique_name_in_owner = true
 custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 text = "75%"
 horizontal_alignment = 2
 
@@ -232,7 +196,7 @@ layout_mode = 2
 [node name="SystemSectionLabel" type="Label" parent="Center/Panel/VBox/SystemSection"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "SETTINGS_SYSTEM"
 
@@ -272,7 +236,7 @@ theme_override_constants/separation = 8
 [node name="ControlsHint" type="Label" parent="Center/Panel/VBox/ControlsSection"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "SETTINGS_KEYBINDS"
 

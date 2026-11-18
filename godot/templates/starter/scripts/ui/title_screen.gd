@@ -21,12 +21,35 @@ func _ready() -> void:
 	_settings_btn.pressed.connect(_on_settings)
 	_quit_btn.pressed.connect(_on_quit)
 	ProtossUiFx.attach_tree(self, [_quit_btn])
+	_refresh_texts()
 	_refresh_continue()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_refresh_texts()
 
 
 func on_ui_enter(_params: Dictionary = {}) -> void:
+	_refresh_texts()
 	_refresh_continue()
 	ProtossUiFx.animate_panel_enter(_panel, self, false)
+
+
+func _refresh_texts() -> void:
+	_set_tr(get_node_or_null("Center/Panel/VBox/SectorTag"), "TITLE_TAG")
+	_set_tr(_continue_btn, "TITLE_CONTINUE")
+	_set_tr(_load_slots_btn, "TITLE_LOAD")
+	_set_tr(_new_btn, "TITLE_NEW")
+	_set_tr(_settings_btn, "TITLE_SETTINGS")
+	_set_tr(_quit_btn, "TITLE_QUIT")
+
+
+func _set_tr(node: Node, key: String) -> void:
+	if node == null or not ("text" in node):
+		return
+	node.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	node.text = tr(key)
 
 
 func _refresh_continue() -> void:

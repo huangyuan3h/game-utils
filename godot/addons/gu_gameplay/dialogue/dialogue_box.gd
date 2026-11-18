@@ -94,7 +94,7 @@ func _ensure_ui() -> void:
 		return
 	_ui_ready = true
 
-	var theme_path := "res://addons/gu_core/ui/protoss/protoss_theme.tres"
+	var theme_path := "res://addons/gu_core/ui/default_theme.tres"
 	if ResourceLoader.exists(theme_path):
 		theme = load(theme_path) as Theme
 
@@ -122,7 +122,7 @@ func _ensure_ui() -> void:
 	_speaker_label = Label.new()
 	_speaker_label.name = "SpeakerLabel"
 	_speaker_label.add_theme_font_size_override("font_size", 18)
-	_speaker_label.add_theme_color_override("font_color", Color(0.95, 0.81, 0.40, 1.0))
+	_speaker_label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95, 1.0))
 	vbox.add_child(_speaker_label)
 
 	_body_label = Label.new()
@@ -133,7 +133,7 @@ func _ensure_ui() -> void:
 	_error_label = Label.new()
 	_error_label.name = "ErrorLabel"
 	_error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_error_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.42, 1.0))
+	_error_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1.0))
 	_error_label.visible = false
 	vbox.add_child(_error_label)
 

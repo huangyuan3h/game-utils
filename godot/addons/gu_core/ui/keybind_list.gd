@@ -53,7 +53,7 @@ func rebuild() -> void:
 		var empty_lbl := Label.new()
 		empty_lbl.text = "No rebindable actions registered."
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty_lbl.add_theme_color_override("font_color", Color(0.55, 0.72, 0.88, 0.85))
+		empty_lbl.add_theme_color_override("font_color", Color(0.62, 0.62, 0.62, 0.9))
 		add_child(empty_lbl)
 		return
 

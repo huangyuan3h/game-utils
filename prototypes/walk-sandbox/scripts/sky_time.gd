@@ -100,10 +100,11 @@ func _process(delta: float) -> void:
 			if _lightning != null and _lightning.has_method("trigger_now"):
 				_lightning.call("trigger_now", _get_anchor_pos())
 
-	hour = fposmod(hour + BASE_HOURS_PER_SECOND * SPEEDS[speed_index] * delta, 24.0)
-	_sim_time += delta
-	_step_weather_state(delta)
-	_apply_visuals(delta)
+	var step := _gameplay_delta(delta)
+	hour = fposmod(hour + BASE_HOURS_PER_SECOND * SPEEDS[speed_index] * step, 24.0)
+	_sim_time += step
+	_step_weather_state(step)
+	_apply_visuals(step)
 
 
 func export_state() -> Dictionary:
@@ -124,6 +125,13 @@ func apply_state(state_data: Dictionary) -> void:
 		weather = w_idx as Weather
 		_apply_preset_immediate(weather)
 	_apply_visuals(0.0)
+
+
+func _gameplay_delta(frame_delta: float) -> float:
+	var clock := get_node_or_null("/root/GameClock")
+	if clock != null and clock.has_method("gameplay_delta"):
+		return float(clock.call("gameplay_delta", frame_delta))
+	return frame_delta
 
 
 func _is_gameplay_input_allowed() -> bool:
@@ -152,6 +160,14 @@ func get_hud_line() -> String:
 func get_night_factor() -> float:
 	var elev := _sun_elevation_rad()
 	return 1.0 - clampf(elev * 1.15 + 0.15, 0.0, 1.0)
+
+
+## How clear the night sky is from this height. 0 near the water, 1 on the summit.
+static func altitude_clarity(height: float, water_y: float, peak_y: float) -> float:
+	var peak := maxf(peak_y, water_y + 4.0)
+	var full := clampf(lerpf(water_y, peak, 0.82), water_y + 5.2, water_y + 9.5)
+	var start := lerpf(water_y, full, 0.18)
+	return smoothstep(start, full, height)
 
 
 func get_weather_params() -> Dictionary:
@@ -303,6 +319,17 @@ func _safe_look_at(node: Node3D, target: Vector3) -> void:
 	node.look_at(target, up)
 
 
+func _summit_clarity() -> float:
+	var water_y := 0.95
+	var peak_y := 11.5
+	if _terrain != null and _terrain.has_method("get_map_data"):
+		var data = _terrain.call("get_map_data")
+		if data != null:
+			water_y = float(data.water_y)
+			peak_y = float(data.h_max)
+	return altitude_clarity(_get_anchor_pos().y, water_y, peak_y)
+
+
 func _get_anchor_pos() -> Vector3:
 	if _anchor_node != null and is_instance_valid(_anchor_node):
 		return _anchor_node.global_position
@@ -392,6 +419,8 @@ func _apply_visuals(delta: float) -> void:
 	_sky_mat.set_shader_parameter("cloud_morph", _cloud_morph)
 	_sky_mat.set_shader_parameter("lightning_flash", lightning_flash)
 	_sky_mat.set_shader_parameter("lightning_dir", lightning_dir)
+	var summit := _summit_clarity()
+	_sky_mat.set_shader_parameter("altitude_clarity", summit)
 
 	# Ambient, fog & post-processing
 	var env_dim := lerpf(1.0, 0.52, _cloud_darkness)
@@ -406,10 +435,12 @@ func _apply_visuals(delta: float) -> void:
 	fog_col = fog_col.lerp(Color(0.78, 0.88, 1.0), clampf(lightning_flash * 0.45, 0.0, 0.6))
 
 	_environment.fog_light_color = fog_col
-	_environment.fog_density = _fog_density + sunset_f * 0.0018 * (1.0 - night_f)
+	var clear_night := night_f * (1.0 - _weather_obscure) * summit
+	_environment.fog_density = (_fog_density + sunset_f * 0.0018 * (1.0 - night_f)) * lerpf(1.0, 0.78, clear_night)
 	_environment.fog_height = lerpf(1.2, 4.5, _rain_intensity + _snow_intensity * 0.6)
 	_environment.fog_height_density = lerpf(0.015, 0.075, maxf(_rain_intensity, _snow_intensity * 0.8) + sunset_f * 0.35)
-	_environment.fog_sky_affect = lerpf(0.32, 0.72, clampf(_fog_density * 80.0, 0.0, 1.0))
+	var sky_fog := lerpf(0.32, 0.72, clampf(_fog_density * 80.0, 0.0, 1.0))
+	_environment.fog_sky_affect = lerpf(sky_fog, 0.24, clear_night)
 
 	_environment.adjustment_saturation = lerpf(1.06, 0.84, _rain_intensity * 0.75 + _snow_intensity * 0.45)
 	_environment.adjustment_brightness = 1.0 + lightning_flash * 0.12

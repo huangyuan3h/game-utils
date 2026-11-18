@@ -16,6 +16,7 @@ const DEFAULTS := {
 	"ambience_volume": 0.85,
 	"ui_volume": 0.90,
 	"camera_zoom_sensitivity": 1.0,
+	"camera_look_sensitivity": 1.0,
 	"fullscreen": false,
 	"show_debug_hud": true,
 	"locale": "en",
@@ -134,7 +135,7 @@ func _sanitize(key: String, value: Variant) -> Variant:
 	match key:
 		"master_volume", "bgm_volume", "sfx_volume", "ambience_volume", "ui_volume":
 			return clampf(float(value), 0.0, 1.0)
-		"camera_zoom_sensitivity":
+		"camera_zoom_sensitivity", "camera_look_sensitivity":
 			return clampf(float(value), 0.25, 3.0)
 		"fullscreen", "show_debug_hud":
 			return bool(value)

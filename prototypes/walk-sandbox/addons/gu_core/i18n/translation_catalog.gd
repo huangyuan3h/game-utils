@@ -49,6 +49,7 @@ func load_dir(dir_path: String) -> Error:
 			err = file_err
 	if not had_manifest:
 		_choose_default_locale()
+	_add_locale_aliases()
 	for tr in _translations:
 		TranslationServer.add_translation(tr)
 	return err
@@ -79,6 +80,28 @@ func locale_label(code: String) -> String:
 	if text == "":
 		return code
 	return text
+
+
+## Godot may rewrite "zh" to zh_CN / zh_Hans. Those aliases are not listed in the menu.
+func _add_locale_aliases() -> void:
+	var extras := {
+		"zh": ["zh_CN", "zh_Hans", "zh_Hans_CN"],
+		"en": ["en_US"],
+	}
+	for code in _locales.duplicate():
+		var src: Translation = _by_locale.get(String(code)) as Translation
+		if src == null or not extras.has(String(code)):
+			continue
+		for alias_v in extras[String(code)]:
+			var alias := String(alias_v)
+			if _by_locale.has(alias):
+				continue
+			var copy := Translation.new()
+			copy.locale = alias
+			for key in src.get_message_list():
+				copy.add_message(key, src.get_message(key))
+			_by_locale[alias] = copy
+			_translations.append(copy)
 
 
 func _choose_default_locale() -> void:

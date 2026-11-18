@@ -7,11 +7,15 @@ const MapGen = preload("res://scripts/map_generator.gd")
 var _ctx: TerrainBuildContext
 ## Extracted mouth & spillway descriptors passed to sea/lake shaders.
 var mouths: Array[Dictionary] = []
+var _seat_base: PackedFloat32Array = PackedFloat32Array()
+var _seat_owner: PackedFloat32Array = PackedFloat32Array()
 
 
 func build(ctx: TerrainBuildContext) -> Dictionary:
 	_ctx = ctx
 	mouths.clear()
+	_seat_base = PackedFloat32Array()
+	_seat_owner = PackedFloat32Array()
 	var mesh := _build_rivers()
 	return {
 		"mesh": mesh,
@@ -115,54 +119,37 @@ func _sample_trench_bed(x: float, z: float, half_w: float, dir_xz: Vector2) -> f
 	return best
 
 
-func _flatten_river_centres(
-	centres: Array[Vector3], beds: Array[float], mouth_y: float
-) -> void:
-	## Monotone downhill sheet. Steeper in the headwaters, calmer near the mouth.
+func _flatten_river_centres(centres: Array[Vector3], beds: Array[float]) -> void:
+	## Keep the sheet on the carved bed. A shallow grade cap used to hold the
+	## water up across steep drops, which read as an aqueduct.
 	if centres.size() < 2:
 		return
-	const MIN_STEP := 0.001
+	const MIN_STEP := 0.004
+	const MAX_HOVER := 0.16
+	const MAX_GRADE := 0.95
 	for i in centres.size():
 		var t := float(i) / float(maxi(centres.size() - 1, 1))
-		var wy: float = beds[i] + lerpf(0.16, 0.28, pow(t, 0.6))
-		if t > 0.68:
-			wy = lerpf(wy, mouth_y + 0.02, smoothstep(0.68, 1.0, t))
-		centres[i].y = maxf(wy, beds[i] + 0.10)
-	for i in range(1, centres.size()):
-		var t := float(i) / float(maxi(centres.size() - 1, 1))
-		var max_grade := lerpf(0.34, 0.16, smoothstep(0.25, 0.85, t))
-		var dxz: float = Vector2(centres[i].x - centres[i - 1].x, centres[i].z - centres[i - 1].z).length()
-		dxz = maxf(dxz, 0.05)
-		var y: float = centres[i].y
-		y = minf(y, centres[i - 1].y - MIN_STEP)
-		y = maxf(y, centres[i - 1].y - dxz * max_grade)
-		y = maxf(y, beds[i] + 0.08)
-		if y > centres[i - 1].y:
-			y = centres[i - 1].y - MIN_STEP
-		centres[i].y = y
-	for i in range(centres.size() - 2, -1, -1):
-		var t := float(i) / float(maxi(centres.size() - 1, 1))
-		var max_grade := lerpf(0.34, 0.16, smoothstep(0.25, 0.85, t))
-		var dxz: float = Vector2(centres[i].x - centres[i + 1].x, centres[i].z - centres[i + 1].z).length()
-		dxz = maxf(dxz, 0.05)
-		var y: float = centres[i].y
-		y = minf(y, centres[i + 1].y + dxz * max_grade)
-		y = maxf(y, beds[i] + 0.08)
+		var clearance := lerpf(0.07, 0.12, smoothstep(0.0, 0.75, t))
+		var y: float = beds[i] + clearance
+		if i > 0:
+			var dxz := Vector2(centres[i].x - centres[i - 1].x, centres[i].z - centres[i - 1].z).length()
+			y = minf(y, centres[i - 1].y - MIN_STEP)
+			y = maxf(y, centres[i - 1].y - maxf(dxz, 0.05) * MAX_GRADE)
+		y = minf(y, beds[i] + MAX_HOVER)
 		centres[i].y = y
 	for _pass in 2:
 		for i in range(1, centres.size() - 1):
 			var y: float = (centres[i - 1].y + centres[i].y + centres[i + 1].y) / 3.0
-			y = maxf(y, beds[i] + 0.08)
+			var dxz := Vector2(centres[i].x - centres[i - 1].x, centres[i].z - centres[i - 1].z).length()
+			y = minf(y, beds[i] + MAX_HOVER)
+			y = minf(y, centres[i - 1].y - MIN_STEP)
+			y = maxf(y, centres[i - 1].y - maxf(dxz, 0.05) * MAX_GRADE)
 			centres[i].y = y
 	for i in range(1, centres.size()):
-		var t := float(i) / float(maxi(centres.size() - 1, 1))
-		var max_grade := lerpf(0.34, 0.16, smoothstep(0.25, 0.85, t))
-		var dxz: float = Vector2(centres[i].x - centres[i - 1].x, centres[i].z - centres[i - 1].z).length()
-		dxz = maxf(dxz, 0.05)
-		if centres[i].y > centres[i - 1].y:
-			centres[i].y = centres[i - 1].y - MIN_STEP
-		if centres[i - 1].y - centres[i].y > dxz * max_grade:
-			centres[i].y = centres[i - 1].y - dxz * max_grade
+		var dxz := Vector2(centres[i].x - centres[i - 1].x, centres[i].z - centres[i - 1].z).length()
+		var y: float = minf(centres[i].y, centres[i - 1].y - MIN_STEP)
+		y = maxf(y, centres[i - 1].y - maxf(dxz, 0.05) * MAX_GRADE)
+		centres[i].y = minf(y, beds[i] + MAX_HOVER)
 
 
 func _seat_channel(
@@ -183,11 +170,21 @@ func _seat_channel(
 		_seat_disc(c, hw, alongs[i], step, half)
 
 
+func _ensure_seat_cache() -> void:
+	if not _seat_base.is_empty():
+		return
+	_seat_base = _ctx.data.heights.duplicate()
+	_seat_owner.resize(_seat_base.size())
+	_seat_owner.fill(INF)
+
+
 func _seat_disc(c: Vector3, hw: float, along: float, step: float, half: float) -> void:
-	## Lower grid verts in a U-shaped channel cross-section with soft shoulder banks.
+	## The closest station owns each cell, and its floor is set just under that
+	## station. A farther, lower station must not dig the ground out from a higher one.
+	_ensure_seat_cache()
 	var data := _ctx.data
-	var bed_r: float = maxf(hw + step * 0.20, step * 0.85)
-	var reach: float = bed_r + step * 2.40
+	var bed_r: float = maxf(hw * 1.35 + step * 0.35, step * 0.95)
+	var reach: float = bed_r + step * 1.35
 	var rad := int(ceil(reach / step)) + 1
 	var cx := int(round((c.x + half) / step))
 	var cz := int(round((c.z + half) / step))
@@ -195,31 +192,33 @@ func _seat_disc(c: Vector3, hw: float, along: float, step: float, half: float) -
 	var x1: int = clampi(cx + rad, 0, int(data.grid) - 1)
 	var z0: int = clampi(cz - rad, 0, int(data.grid) - 1)
 	var z1: int = clampi(cz + rad, 0, int(data.grid) - 1)
-	var center_depth := lerpf(0.44, 0.88, pow(clampf(along, 0.0, 1.0), 0.65))
-	var edge_depth := lerpf(0.14, 0.24, clampf(along, 0.0, 1.0))
+	var center_depth := lerpf(0.42, 0.72, pow(clampf(along, 0.0, 1.0), 0.65))
+	var edge_depth := lerpf(0.12, 0.20, clampf(along, 0.0, 1.0))
 	for z in range(z0, z1 + 1):
 		for x in range(x0, x1 + 1):
 			var idx: int = _ctx.idx(x, z)
 			var b: int = int(data.biomes[idx])
+			if b == MapGen.Biome.SEA or b == MapGen.Biome.LAKE:
+				continue
 			var wx: float = -half + float(x) * step
 			var wz: float = -half + float(z) * step
 			var d := Vector2(wx - c.x, wz - c.z).length()
-			if d > reach:
+			if d > reach or d >= _seat_owner[idx]:
 				continue
-			var target: float = data.heights[idx]
+			_seat_owner[idx] = d
+			var base_h: float = _seat_base[idx]
+			var target: float = base_h
 			if d <= bed_r:
 				var r_norm := clampf(d / maxf(bed_r, 0.01), 0.0, 1.0)
-				# U-shaped thalweg: deep in the central channel, rising smoothly toward banks
 				var u_bed := r_norm * r_norm
 				target = c.y - lerpf(center_depth, edge_depth, u_bed)
-				if b != MapGen.Biome.SEA and b != MapGen.Biome.LAKE:
-					data.biomes[idx] = MapGen.Biome.RIVER
+				data.biomes[idx] = MapGen.Biome.RIVER
+				data.heights[idx] = target
 			else:
 				var u := clampf((d - bed_r) / maxf(reach - bed_r, 0.01), 0.0, 1.0)
 				u = u * u * (3.0 - 2.0 * u)
-				target = lerpf(c.y - edge_depth, data.heights[idx], u)
-			if target < data.heights[idx]:
-				data.heights[idx] = target
+				target = lerpf(c.y - edge_depth, base_h, u)
+				data.heights[idx] = minf(base_h, target)
 
 
 func _clearance_pass(verts: PackedVector3Array, colors: PackedColorArray, seat_flags: Array[bool]) -> void:
@@ -404,7 +403,8 @@ func _mitered_bank_offsets(
 			right.y = cur.y
 		lefts.append(left)
 		rights.append(right)
-	# Light bank smooth keeps edges continuous without reintroducing overlap
+	# Light bank smooth keeps edges continuous without reintroducing overlap.
+	# Re-center afterwards so the sheet stays on the channel instead of drifting over a side slope.
 	for _pass in 2:
 		for i in range(1, n - 1):
 			var yl := lefts[i].y
@@ -413,6 +413,13 @@ func _mitered_bank_offsets(
 			rights[i] = (rights[i - 1] + rights[i] + rights[i + 1]) / 3.0
 			lefts[i].y = yl
 			rights[i].y = yr
+	for i in n:
+		var mid := (lefts[i] + rights[i]) * 0.5
+		var shift := Vector3(centres[i].x - mid.x, 0.0, centres[i].z - mid.z)
+		lefts[i] += shift
+		rights[i] += shift
+		lefts[i].y = centres[i].y
+		rights[i].y = centres[i].y
 	return [lefts, rights]
 
 
@@ -489,6 +496,106 @@ func _record_mouth_descriptors(
 	})
 
 
+func _nearest_ribbon_sample(p: Vector2, ribbons: Array) -> Dictionary:
+	## Prefer the main stem when the point is in its junction neighborhood.
+	var best_d := INF
+	var best: Dictionary = {}
+	var main_hit: Dictionary = {}
+	for ri in ribbons.size():
+		var rib: Dictionary = ribbons[ri]
+		var cs: Array = rib["centres"]
+		var ws: Array = rib["half_ws"]
+		for i in cs.size():
+			var c: Vector3 = cs[i]
+			var d := Vector2(c.x, c.z).distance_to(p)
+			if d < best_d:
+				best_d = d
+				best = {
+					"y": c.y,
+					"half_w": float(ws[i]),
+					"dist": d,
+					"pos": Vector2(c.x, c.z),
+				}
+			if ri == 0 and (main_hit.is_empty() or d < float(main_hit["dist"])):
+				main_hit = {
+					"y": c.y,
+					"half_w": float(ws[i]),
+					"dist": d,
+					"pos": Vector2(c.x, c.z),
+				}
+	if not main_hit.is_empty() and float(main_hit["dist"]) <= float(main_hit["half_w"]) + 3.0:
+		return main_hit
+	return best
+
+
+func _feather_confluence(
+	centres: Array[Vector3],
+	half_ws: Array[float],
+	alongs: Array[float],
+	over_ws: Array[float],
+	head_fades: Array[float],
+	open_waters: Array[bool],
+	ribbons: Array
+) -> void:
+	## Stop the side stream on the main bank, match its surface, and taper the width
+	## so the junction is one channel instead of two stacked ribbons.
+	if ribbons.is_empty() or centres.size() < 4:
+		return
+	var tail := centres.size()
+	for i in range(centres.size() - 1, 0, -1):
+		var p := Vector2(centres[i].x, centres[i].z)
+		var hit := _nearest_ribbon_sample(p, ribbons)
+		if hit.is_empty() or float(hit["dist"]) > float(hit["half_w"]) + 2.6:
+			break
+		tail = i
+	if tail >= centres.size():
+		return
+	var keep := centres.size()
+	for i in range(tail, centres.size()):
+		var p := Vector2(centres[i].x, centres[i].z)
+		var hit := _nearest_ribbon_sample(p, ribbons)
+		if hit.is_empty():
+			continue
+		if float(hit["dist"]) <= maxf(float(hit["half_w"]) * 0.62, 0.45):
+			keep = i
+			break
+	keep = clampi(keep, 4, centres.size())
+	var end_hit := _nearest_ribbon_sample(Vector2(centres[keep - 1].x, centres[keep - 1].z), ribbons)
+	if not end_hit.is_empty():
+		var stem: Vector2 = end_hit["pos"]
+		var end := Vector2(centres[keep - 1].x, centres[keep - 1].z)
+		var away := end - stem
+		var dist := away.length()
+		var bank: float = maxf(float(end_hit["half_w"]) * 0.92, 0.45)
+		if dist > bank and dist > 0.05:
+			var on_bank := stem + away / dist * bank
+			centres[keep - 1].x = on_bank.x
+			centres[keep - 1].z = on_bank.y
+		centres[keep - 1].y = float(end_hit["y"])
+	if keep < centres.size():
+		centres.resize(keep)
+		half_ws.resize(keep)
+		alongs.resize(keep)
+		over_ws.resize(keep)
+		head_fades.resize(keep)
+		open_waters.resize(keep)
+	var taper_from := keep - 1
+	var acc := 0.0
+	for i in range(keep - 1, 0, -1):
+		acc += Vector2(centres[i].x, centres[i].z).distance_to(Vector2(centres[i - 1].x, centres[i - 1].z))
+		taper_from = i - 1
+		if acc >= 3.2:
+			break
+	var span := maxf(float(keep - 1 - taper_from), 1.0)
+	for i in range(taper_from, keep):
+		var u := clampf(float(i - taper_from) / span, 0.0, 1.0)
+		var hit := _nearest_ribbon_sample(Vector2(centres[i].x, centres[i].z), ribbons)
+		var target_y: float = centres[i].y if hit.is_empty() else float(hit["y"])
+		half_ws[i] = lerpf(half_ws[i], 0.28, smoothstep(0.2, 1.0, u))
+		centres[i].y = lerpf(centres[i].y, target_y, smoothstep(0.25, 1.0, u))
+		over_ws[i] = maxf(over_ws[i], u * 0.2)
+
+
 func _build_rivers() -> ArrayMesh:
 	## One continuous flat ribbon per river — same Y across the width so banks never
 	## punch holes through the water (that read as a broken / dashed stream).
@@ -503,6 +610,7 @@ func _build_rivers() -> ArrayMesh:
 	var indices := PackedInt32Array()
 	var seat_flags: Array[bool] = []
 	var built_centres: Array = []
+	var built_ribbons: Array = []
 
 	# Pre-collect tributary join positions on the main stem so the main creek widens slightly downstream.
 	var join_points: Array[Vector2] = []
@@ -610,8 +718,9 @@ func _build_rivers() -> ArrayMesh:
 					over = lerpf(0.48, 1.0, smoothstep(0.0, post_span, cum_d[i] - shore_d))
 
 			var wdt := _estuary_half_width(t, 0.0 if is_trib else over)
-			if ri == 0 and t > main_join_along:
-				wdt += 0.30 * smoothstep(main_join_along, minf(main_join_along + 0.08, 1.0), t)
+			if ri == 0 and main_join_along < 2.0 and t > main_join_along - 0.06:
+				var swell := smoothstep(main_join_along - 0.06, minf(main_join_along + 0.04, 1.0), t)
+				wdt += 1.05 * swell
 			if head_lake_y > -900.0:
 				wdt = lerpf(wdt, maxf(wdt, 1.30), head_f)
 			if is_trib:
@@ -629,22 +738,21 @@ func _build_rivers() -> ArrayMesh:
 			over_ws.append(over)
 			head_fades.append(head_f)
 
-		_flatten_river_centres(centres, beds, mouth_y)
+		_flatten_river_centres(centres, beds)
 		for i in centres.size():
 			if head_fades[i] > 0.01 and head_lake_y > -900.0:
 				centres[i].y = lerpf(centres[i].y, head_lake_y, smoothstep(0.01, 0.95, head_fades[i]))
-			if over_ws[i] > 0.02:
-				var blend := smoothstep(0.02, 0.88, over_ws[i])
-				if not is_trib:
-					blend *= smoothstep(0.58, 0.92, alongs[i])
+			if not is_trib and over_ws[i] > 0.02:
+				var blend := smoothstep(0.02, 0.88, over_ws[i]) * smoothstep(0.58, 0.92, alongs[i])
 				centres[i].y = lerpf(centres[i].y, mouth_y, blend)
-		_flatten_river_centres(centres, beds, mouth_y)
-		# Lock spillway start & open-water estuary right to lake/sea level so no step occurs
-		for i in centres.size():
-			if head_fades[i] > 0.30 and head_lake_y > -900.0:
-				centres[i].y = lerpf(centres[i].y, head_lake_y, smoothstep(0.30, 0.95, head_fades[i]))
-			if over_ws[i] > 0.36 and (is_trib or alongs[i] > 0.72):
-				centres[i].y = lerpf(centres[i].y, mouth_y, smoothstep(0.36, 0.85, over_ws[i]))
+		if is_trib:
+			_feather_confluence(centres, half_ws, alongs, over_ws, head_fades, open_waters, built_ribbons)
+		else:
+			for i in centres.size():
+				if head_fades[i] > 0.30 and head_lake_y > -900.0:
+					centres[i].y = lerpf(centres[i].y, head_lake_y, smoothstep(0.30, 0.95, head_fades[i]))
+				if over_ws[i] > 0.36 and alongs[i] > 0.72:
+					centres[i].y = lerpf(centres[i].y, mouth_y, smoothstep(0.36, 0.85, over_ws[i]))
 
 		_limit_width_by_curvature(centres, half_ws)
 		_seat_channel(centres, half_ws, alongs, open_waters)
@@ -683,6 +791,10 @@ func _build_rivers() -> ArrayMesh:
 			continue
 		_record_mouth_descriptors(line, centres, half_ws, open_waters, head_lake_y, is_trib)
 		built_centres.append(centres)
+		built_ribbons.append({
+			"centres": centres.duplicate(),
+			"half_ws": half_ws.duplicate(),
+		})
 		for i in range(kept - 1):
 			var v0 := base_vi + i * 2
 			indices.append_array([v0, v0 + 2, v0 + 1, v0 + 1, v0 + 2, v0 + 3])

@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://bp3c3rr5u5bwy"]
+[gd_scene load_steps=9 format=3 uid="uid://bp3c3rr5u5bwy"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/player.gd" id="2_player"]
@@ -6,33 +6,27 @@
 [ext_resource type="PackedScene" path="res://scenes/terrain_map.tscn" id="4_terrain"]
 [ext_resource type="Script" path="res://addons/gu_gameplay/camera/camera_rig.gd" id="5_camera_rig"]
 [ext_resource type="Script" path="res://scripts/ui/debug_overlay.gd" id="6_debug_overlay"]
-[ext_resource type="Theme" path="res://addons/gu_core/ui/protoss/protoss_theme.tres" id="7_protoss_theme"]
-[ext_resource type="Texture2D" path="res://addons/gu_core/ui/protoss/assets/panel_hud.svg" id="8_panel_hud"]
-[ext_resource type="Shader" path="res://addons/gu_core/ui/protoss/shaders/protoss_holo_panel.gdshader" id="9_holo"]
+[ext_resource type="Theme" path="res://addons/gu_core/ui/default_theme.tres" id="7_protoss_theme"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape_player"]
 radius = 0.28
 height = 1.5
 
-[sub_resource type="StyleBoxTexture" id="StyleBox_hud_panel"]
-content_margin_left = 16.0
-content_margin_top = 12.0
-content_margin_right = 16.0
-content_margin_bottom = 12.0
-texture = ExtResource("8_panel_hud")
-texture_margin_left = 18.0
-texture_margin_top = 18.0
-texture_margin_right = 18.0
-texture_margin_bottom = 18.0
-
-[sub_resource type="ShaderMaterial" id="ShaderMat_hud_holo"]
-shader = ExtResource("9_holo")
-shader_parameter/scan_color = Color(0.22, 0.91, 1, 1)
-shader_parameter/gold_rim_color = Color(0.95, 0.81, 0.4, 1)
-shader_parameter/grid_alpha = 0.03
-shader_parameter/scan_alpha = 0.055
-shader_parameter/scan_speed = 0.18
-shader_parameter/rim_alpha = 0.045
+[sub_resource type="StyleBoxFlat" id="StyleBox_hud_panel"]
+bg_color = Color(0.12, 0.12, 0.12, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.72, 0.72, 0.72, 0.55)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -97,11 +91,6 @@ offset_bottom = 14.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBox_hud_panel")
 
-[node name="HoloOverlay" type="ColorRect" parent="CanvasLayer/HudRoot/TelemetryPanel"]
-layout_mode = 2
-mouse_filter = 2
-material = SubResource("ShaderMat_hud_holo")
-
 [node name="VBox" type="VBoxContainer" parent="CanvasLayer/HudRoot/TelemetryPanel"]
 layout_mode = 2
 mouse_filter = 2
@@ -114,14 +103,14 @@ mouse_filter = 2
 [node name="Title" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/HeaderRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 0.95)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.95)
 theme_override_font_sizes/font_size = 11
 text = "KHALAI TELEMETRY // SECTOR SCAN"
 
 [node name="StatusBadge" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/HeaderRow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 0.95)
 theme_override_font_sizes/font_size = 11
 text = "WALK · ZOOM 100%"
 horizontal_alignment = 2
@@ -139,14 +128,14 @@ theme_override_constants/separation = 8
 
 [node name="BeaconsTitle" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/BeaconsRow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.55, 0.72, 0.88, 0.95)
+theme_override_colors/font_color = Color(0.62, 0.62, 0.62, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "BEACONS:"
 
 [node name="BeaconsLabel" type="Label" parent="CanvasLayer/HudRoot/TelemetryPanel/VBox/BeaconsRow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.91, 0.79, 1)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
 theme_override_font_sizes/font_size = 12
 text = "[1] [2] [3] [4] [5] [6]"
 
@@ -166,11 +155,6 @@ grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBox_hud_panel")
 
-[node name="HoloOverlay" type="ColorRect" parent="CanvasLayer/HudRoot/CommandCard"]
-layout_mode = 2
-mouse_filter = 2
-material = SubResource("ShaderMat_hud_holo")
-
 [node name="VBox" type="VBoxContainer" parent="CanvasLayer/HudRoot/CommandCard"]
 layout_mode = 2
 mouse_filter = 2
@@ -178,13 +162,13 @@ theme_override_constants/separation = 4
 
 [node name="CmdTitle" type="Label" parent="CanvasLayer/HudRoot/CommandCard/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.81, 0.4, 0.95)
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 0.95)
 theme_override_font_sizes/font_size = 11
 text = "COMMAND MATRIX"
 
 [node name="CmdBody" type="Label" parent="CanvasLayer/HudRoot/CommandCard/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.76, 0.87, 0.97, 0.95)
+theme_override_colors/font_color = Color(0.78, 0.78, 0.78, 0.95)
 theme_override_font_sizes/font_size = 12
 text = "[WASD] Move · [SHIFT] Run · [E] Interact · [Scroll] Zoom
 [1-4] Gather/Mine/Chop/Build · [F] Repeat · [X] Cancel
@@ -212,7 +196,7 @@ theme_override_styles/panel = SubResource("StyleBox_hud_panel")
 [node name="InteractionPromptLabel" type="Label" parent="CanvasLayer/InteractionPromptPanel"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.22, 0.91, 1, 1)
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 theme_override_font_sizes/font_size = 15
 text = "[E] Interact"
 horizontal_alignment = 1

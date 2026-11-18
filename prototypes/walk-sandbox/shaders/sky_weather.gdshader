@@ -20,6 +20,9 @@ uniform float cloud_morph = 0.0;
 
 uniform float lightning_flash : hint_range(0.0, 2.0) = 0.0;
 uniform vec3 lightning_dir = vec3(0.0, 0.35, -1.0);
+// 0 at the shore, 1 on alpine summits. The follow camera looks down, so the
+// visible night sky sits just below the mathematical horizon.
+uniform float altitude_clarity : hint_range(0.0, 1.0) = 0.0;
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -56,22 +59,35 @@ float fbm4(vec2 p) {
 	return v;
 }
 
-float star_layer(vec3 dir, float scale, float density) {
+vec3 star_layer(vec3 dir, float scale, float chance, float radius) {
 	vec3 cell = floor(dir * scale);
 	vec3 local = fract(dir * scale) - 0.5;
 	float rnd = hash13(cell);
-	if (rnd < density) {
-		return 0.0;
+	if (rnd > chance) {
+		return vec3(0.0);
 	}
 	vec3 jitter = vec3(
-		hash13(cell + 1.3) - 0.5,
-		hash13(cell + 7.1) - 0.5,
-		hash13(cell + 13.7) - 0.5
-	) * 0.55;
+		hash13(cell + vec3(1.3, 2.1, 3.7)),
+		hash13(cell + vec3(4.2, 5.5, 6.1)),
+		hash13(cell + vec3(7.7, 8.3, 9.9))
+	) - 0.5;
+	jitter *= 0.72;
 	float dist = length(local - jitter);
-	float size = mix(0.04, 0.11, fract(rnd * 37.0));
-	float twinkle = 0.72 + 0.28 * sin(TIME * (1.8 + fract(rnd * 19.0) * 3.5) + rnd * 60.0);
-	return smoothstep(size, 0.0, dist) * twinkle;
+	float core = smoothstep(radius, 0.0, dist);
+	float glow = smoothstep(radius * 3.0, radius * 0.2, dist);
+	float mag = mix(0.4, 0.95, fract(rnd * 17.0));
+	float twinkle = 0.84 + 0.16 * sin(TIME * (0.35 + fract(rnd * 23.0) * 0.7) + rnd * 48.0);
+	vec3 tint = mix(vec3(0.62, 0.72, 0.92), vec3(0.88, 0.82, 0.72), fract(rnd * 11.0));
+	return tint * (core * mag + glow * 0.30) * twinkle;
+}
+
+float milky_way(vec3 dir) {
+	vec3 axis = normalize(vec3(0.30, 0.84, 0.45));
+	float plane = abs(dot(dir, axis));
+	float band = exp(-plane * plane * 14.0);
+	vec2 uv = vec2(atan(dir.z, dir.x), dir.y * 2.2);
+	float dust = fbm4(uv * 1.15 + vec2(2.2, 5.4));
+	return band * (0.35 + 0.65 * dust) * smoothstep(-0.58, 0.02, dir.y);
 }
 
 float sample_clouds(vec2 uv, float coverage) {
@@ -93,9 +109,14 @@ void sky() {
 	vec3 col = mix(sky_top_col, sky_horizon_col, horizon_mix);
 
 	// Ground hemisphere blend below horizon.
+	// The follow camera pitches down, so a summit vista is this band. On a clear
+	// night up high, keep it sky-colored instead of fading into the ground void.
+	float clear_night = night_factor * (1.0 - weather_obscure) * smoothstep(0.18, 0.78, altitude_clarity);
 	if (elev < 0.0) {
-		float g_t = smoothstep(0.0, -0.35, elev);
-		col = mix(sky_horizon_col * 0.85, ground_col, g_t);
+		float g_t = smoothstep(0.0, -0.48, elev);
+		g_t *= mix(1.0, 0.12, clear_night);
+		vec3 horizon_night = sky_horizon_col * mix(0.85, 0.62, clear_night);
+		col = mix(horizon_night, ground_col, g_t);
 	}
 
 	// Sun Mie forward glow near horizon & solar azimuth.
@@ -121,11 +142,16 @@ void sky() {
 		col = mix(col, moon_col * 1.35, moon_disc * moon_vis);
 	}
 
-	// Stars (upper sky, visible at night and faded by cloud cover).
-	if (elev > 0.02 && night_factor > 0.04 && !AT_CUBEMAP_PASS) {
-		float star_fade = night_factor * smoothstep(0.02, 0.25, elev) * (1.0 - weather_obscure * 0.9);
-		float stars = star_layer(dir, 95.0, 0.986) * 1.15 + star_layer(dir, 170.0, 0.990) * 0.75;
-		col += vec3(0.85, 0.91, 1.0) * stars * star_fade;
+	// Small, hazy stars. Brightness stays near 1 so bloom does not swell them.
+	if (night_factor > 0.04 && altitude_clarity > 0.08 && !AT_CUBEMAP_PASS) {
+		float star_fade = night_factor * smoothstep(-0.62, -0.16, elev);
+		star_fade *= (1.0 - weather_obscure * 0.94);
+		star_fade *= mix(0.04, 1.0, smoothstep(0.12, 0.8, altitude_clarity));
+		vec3 stars = star_layer(dir, 128.0, 0.16, 0.055) + star_layer(dir, 74.0, 0.055, 0.07);
+		col += stars * star_fade;
+		float veil = 0.55 + 0.45 * vnoise(dir.xz * 3.2 + vec2(elev * 2.0, 1.7));
+		float mw = milky_way(dir) * smoothstep(0.35, 0.85, altitude_clarity);
+		col += vec3(0.16, 0.20, 0.36) * (veil * 0.55 + mw) * 0.34 * star_fade;
 	}
 
 	// Procedural multi-layered clouds across upper hemisphere.

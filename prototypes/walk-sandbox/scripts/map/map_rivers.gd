@@ -633,33 +633,70 @@ static func _try_join_tributary(
 	if best_i < 3 or best_j < 0:
 		return PackedVector2Array()
 
-	# Step slightly upstream on the tributary and slightly downstream on the main stem
-	# so a cubic Bezier joins them tangent-to-tangent with no Z-kink.
+	# Meet the downstream bank from the side. Ending on the centerline makes the
+	# tributary ribbon cross through the main channel.
 	var cut_i := maxi(2, best_i - 2)
-	var merge_j := mini(main.size() - 2, best_j + 3)
+	var merge_j := mini(main.size() - 2, best_j + 4)
 	var p0: Vector2 = trib[cut_i]
-	var p3: Vector2 = main[merge_j]
+	var stem: Vector2 = main[merge_j]
 	var t0 := (p0 - trib[maxi(0, cut_i - 2)]).normalized()
-	var t3 := (main[mini(main.size() - 1, merge_j + 2)] - p3).normalized()
-	var chord := p0.distance_to(p3)
-	if chord < 0.8:
-		chord = 0.8
-	var h := clampf(chord * 0.42, 0.8, 4.5)
+	var t3 := (main[mini(main.size() - 1, merge_j + 2)] - stem).normalized()
+	if t3.length_squared() < 1e-8:
+		t3 = Vector2(0.0, 1.0)
+	var side_n := Vector2(-t3.y, t3.x)
+	var side := signf((p0 - stem).dot(side_n))
+	if side == 0.0:
+		side = 1.0
+	side_n *= side
+	var along := float(merge_j) / float(maxi(main.size() - 1, 1))
+	var bank := river_half_width(along) * 0.82
+	var p3 := stem + side_n * bank
+	var chord := maxf(p0.distance_to(p3), 0.8)
+	var h := clampf(chord * 0.36, 0.7, 3.4)
 	var p1 := p0 + t0 * h
-	var p2 := p3 - t3 * h
+	var p2 := p3 - t3 * (h * 0.55) + side_n * (bank * 0.45)
+	if (p2 - stem).dot(side_n) < bank * 0.2:
+		p2 = p3 - t3 * (h * 0.25) + side_n * (bank * 0.4)
 
 	var out := PackedVector2Array()
 	for i in range(cut_i + 1):
 		out.append(trib[i])
 	for k in range(1, 6):
-		var u := float(k) / 5.0
+		var u := float(k) / 6.0
 		var iu := 1.0 - u
 		var bp := p0 * (iu * iu * iu) + p1 * (3.0 * iu * iu * u) + p2 * (3.0 * iu * u * u) + p3 * (u * u * u)
+		bp = _keep_off_centerline(bp, main, side_n, bank, u)
 		out.append(bp)
+	out.append(p3)
 	var sanitized := _sanitize_polyline(out)
 	if sanitized.is_empty() or sanitized[sanitized.size() - 1].distance_to(p3) > 1.5:
 		return PackedVector2Array()
 	return sanitized
+
+
+static func _keep_off_centerline(
+	p: Vector2, main: PackedVector2Array, side_n: Vector2, bank: float, u: float
+) -> Vector2:
+	## Hold the joining curve on the incoming bank so it cannot cut across the stem.
+	var limit := bank * lerpf(1.05, 0.78, clampf(u, 0.0, 1.0))
+	var best := INF
+	var closest := p
+	for i in range(main.size() - 1):
+		var a: Vector2 = main[i]
+		var b: Vector2 = main[i + 1]
+		var ab := b - a
+		var len2 := ab.length_squared()
+		var t := 0.0 if len2 < 1e-8 else clampf((p - a).dot(ab) / len2, 0.0, 1.0)
+		var q := a.lerp(b, t)
+		var d := p.distance_to(q)
+		if d < best:
+			best = d
+			closest = q
+	if best >= limit:
+		return p
+	if best < 0.02:
+		return closest + side_n * limit
+	return closest + (p - closest) / best * limit
 
 
 static func _assemble_watershed(candidates: Array) -> Array:
