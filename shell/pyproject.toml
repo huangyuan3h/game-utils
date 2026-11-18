@@ -7,7 +7,6 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-gu-audio = "game_utils_audio.cli:main"
 gu = "game_utils_audio.cli:main"
 
 [dependency-groups]

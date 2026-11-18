@@ -1,5 +1,7 @@
 # Architecture — Language & Multi-Asset Plan
 
+> Current tree, commands, and edit rules live in [`AGENTS.md`](../AGENTS.md). This file only records the language choice.
+
 ## Short answer
 
 **Yes: Python is a good shell language for game-utils** — as an **orchestrator**, not as the only implementation language.
@@ -95,14 +97,14 @@ Each new category = **one adapter package + docs + presets**, not a new shell la
 ```
 game-utils/
   docs/                 # concepts, research, architecture
-  shell/                # Python orchestrator (gu-audio → later gu / game-utils)
+  shell/                # Python orchestrator (`gu`, via ./start.sh)
   apps/web/             # optional future TS UI
   adapters/             # optional: split sfx/bgm/2d as packages when large
   output/               # generated assets (gitignored)
   vendors/              # cloned upstream tools (gitignored)
 ```
 
-Today `shell/` already matches the orchestrator role. Rename CLI from `gu-audio` → `gu` when a second category lands.
+Today `shell/` is that orchestrator. The command is `gu`, invoked through `./start.sh`.
 
 ---
 

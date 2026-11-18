@@ -1,8 +1,13 @@
-# game-utils CLI (`gu` / `gu-audio`)
+# game-utils CLI (`gu`)
 
-Unified Python CLI for game audio pipelines, Godot shared addon/project management, data table validation, and headless CI checks.
+Python CLI behind the repo-root `./start.sh`. Use the root script unless you are already in this directory.
 
-## Setup
+```bash
+./start.sh play            # from the repo root
+uv run gu play             # equivalent, from shell/
+```
+
+Setup, if you call `uv` yourself:
 
 ```bash
 cd shell
@@ -10,6 +15,16 @@ uv sync --group dev
 ```
 
 ## Commands
+
+### Test Game
+
+```bash
+uv run gu play                                   # run prototypes/walk-sandbox
+uv run gu play --editor                          # open it in the Godot editor
+uv run gu play --dry-run                         # print the Godot command
+```
+
+With no subcommand, `gu` opens the home menu (play test game / audio tools). `gu menu` is the audio menu only.
 
 ### Godot Project & Addon Scaffolding
 

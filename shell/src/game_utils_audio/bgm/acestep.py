@@ -55,7 +55,7 @@ def setup(force: bool = False) -> Path:
 
 def _require_installed() -> None:
     if not is_installed():
-        raise RuntimeError("ACE-Step not installed. Run: gu-audio bgm setup")
+        raise RuntimeError("ACE-Step not installed. Run: ./start.sh bgm setup")
 
 
 def start_ui() -> None:
@@ -125,7 +125,7 @@ def generate(
     ensure_output_dirs()
     if not api_healthy(base):
         raise RuntimeError(
-            f"ACE-Step API not reachable at {base}. Start it with: gu-audio bgm api"
+            f"ACE-Step API not reachable at {base}. Start it with: ./start.sh bgm api"
         )
 
     payload: dict[str, Any] = {"prompt": prompt}

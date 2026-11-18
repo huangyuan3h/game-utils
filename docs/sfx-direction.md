@@ -26,7 +26,7 @@ Procedural sfxr-style generation feels low value: random, hard to control, and �
 
 ```
 need (footsteps) → open suggested collection → download zip
-  → gu-audio sfx import ~/Downloads/pack.zip
+  → ./start.sh sfx import ~/Downloads/pack.zip
   → files in output/sfx/library/<pack>/
 ```
 

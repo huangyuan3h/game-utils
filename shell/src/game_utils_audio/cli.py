@@ -10,7 +10,9 @@ from game_utils_audio.assets_audit import audit_project_assets, write_credits
 from game_utils_audio.bgm import acestep
 from game_utils_audio.data_pipeline import build_data_dir, validate_data_dir
 from game_utils_audio.godot_project import init_godot_project, sync_addons
+from game_utils_audio.launcher import run_home
 from game_utils_audio.menu import run_menu
+from game_utils_audio.play import launch_test_game
 from game_utils_audio.paths import (
     BGM_OUTPUT_DIR,
     DEFAULT_GODOT_AUDIO_DIR,
@@ -142,8 +144,26 @@ def _cmd_bgm_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_home(_: argparse.Namespace) -> int:
+    return run_home()
+
+
 def _cmd_menu(_: argparse.Namespace) -> int:
     return run_menu()
+
+
+def _cmd_play(args: argparse.Namespace) -> int:
+    project = Path(args.project) if args.project else None
+    cmd = launch_test_game(
+        project,
+        godot_bin=args.godot,
+        editor=args.editor,
+        skip_import=args.skip_import,
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        print(" ".join(cmd))
+    return 0
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:
@@ -290,12 +310,20 @@ def _cmd_export(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="game-utils audio shell — realistic SFX collections, BGM (ACE-Step), and Godot asset sync",
+        description="game-utils — test game, audio tools, and Godot project commands",
     )
     parser.add_argument("--version", action="version", version=f"gu {__version__}")
     sub = parser.add_subparsers(dest="command", required=False)
 
-    p_menu = sub.add_parser("menu", help="Interactive launcher (default)")
+    p_play = sub.add_parser("play", help="Launch the Walk Sandbox test game")
+    p_play.add_argument("--project", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
+    p_play.add_argument("--godot", default=None, help="Path to Godot binary")
+    p_play.add_argument("--editor", action="store_true", help="Open the Godot editor instead of running the game")
+    p_play.add_argument("--skip-import", action="store_true", help="Skip the headless asset import")
+    p_play.add_argument("--dry-run", action="store_true", help="Print the Godot command without launching")
+    p_play.set_defaults(func=_cmd_play)
+
+    p_menu = sub.add_parser("menu", help="Interactive audio tools")
     p_menu.set_defaults(func=_cmd_menu)
 
     p_doctor = sub.add_parser("doctor", help="Check backends and environment")
@@ -456,7 +484,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
-        args.func = _cmd_menu
+        args.func = _cmd_home
     try:
         code = args.func(args)
     except Exception as exc:  # noqa: BLE001 - CLI boundary

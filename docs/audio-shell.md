@@ -14,7 +14,7 @@
 shell/
   README.md
   pyproject.toml
-  src/game_utils_audio/     # Python CLI entry: `gu-audio` / `python -m game_utils_audio`
+  src/game_utils_audio/     # Python CLI: `gu`, started from repo-root ./start.sh
     cli.py                  # two sections: sfx | bgm
     sfx/                    # sound effects
     bgm/                    # background music (ACE-Step)

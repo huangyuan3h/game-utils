@@ -136,7 +136,7 @@ def print_imported() -> None:
     packs = list_imported()
     if not packs:
         print(f"No local packs yet. Download a collection, then:")
-        print(f"  gu-audio sfx import ~/Downloads/some-pack.zip")
+        print("  ./start.sh sfx import ~/Downloads/some-pack.zip")
         print(f"Or drop files into: {INCOMING_DIR}")
         return
     for p in packs:

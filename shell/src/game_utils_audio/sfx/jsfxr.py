@@ -83,7 +83,7 @@ def setup() -> None:
 
 def generate_file(preset: str, out: Path, seed: int | None = None) -> Path:
     if not is_ready():
-        raise RuntimeError("jsfxr backend not ready. Run: gu-audio sfx setup-jsfxr")
+        raise RuntimeError("jsfxr backend not ready. Run: ./start.sh sfx setup-jsfxr")
 
     key = preset.lower().replace("_", "").replace("-", "")
     js_preset = JSFXR_PRESETS.get(key)

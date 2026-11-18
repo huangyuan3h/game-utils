@@ -10,34 +10,31 @@ Shared Godot 4.6 game skeleton, reusable gameplay addons, and Python asset/engin
 | `godot/addons/gu_gameplay/` | Reusable gameplay plugin: `Interactable` / `Interactor`, `CameraRig`, `CharacterAction*`, `SurfaceResolver` / `SurfaceAudioBank`, `StatSet`, `InventoryContainer` / `ItemDef`, `FlagStore` / `QuestTracker`, `DialogueDef` / `DialogueRunner` / `DialogueBox`, `HealthComponent` / `WorldPickup` / `ResourceNode` |
 | `godot/templates/starter/` | Full Godot 4.6 starter template scaffolded by `gu init` |
 | `prototypes/walk-sandbox/` | Reference 3D sandbox integrating procedural terrain, weather, beacons, quests, resource harvesting, and full UI |
-| `shell/` | Unified Python CLI (`gu` / `gu-audio`) for SFX/BGM, asset sync & audit, data pipelines, starter scaffolding, and CI checks |
+| `shell/` | Python CLI (`gu`) for the test-game launcher, SFX/BGM, asset sync and audit, data pipelines, starter scaffolding, and CI checks |
 | `docs/` | Architecture notes, audio direction, and concept docs |
+| `AGENTS.md` | Current architecture map for agents and contributors |
 
 ## Quick Start
+
+One entry point. Requires `uv` and, for the game, Godot 4.6+.
+
+```bash
+./start.sh                 # home menu: play the test game, or open audio tools
+./start.sh play            # launch Walk Sandbox immediately
+./start.sh play --editor   # open Walk Sandbox in the Godot editor
+```
 
 **Create a new Godot game from the shared skeleton**
 
 ```bash
-cd shell && uv sync --group dev
-uv run gu init ~/Projects/my-game --name "My Game"
+./start.sh init ~/Projects/my-game --name "My Game"
 ```
 
-**Sync shared addons & run full quality checks**
+**Sync shared addons and run quality checks**
 
 ```bash
-cd shell
-uv run gu addons sync --prune
-uv run gu check
+./start.sh addons sync --prune
+./start.sh check
 ```
 
-**Launch Walk Sandbox** (requires Godot 4.6+)
-
-```bash
-./start-walk.sh
-```
-
-**Audio Shell**
-
-```bash
-./start-audio.sh
-```
+Agents and contributors: read `AGENTS.md` before editing. It is the current architecture. `docs/architecture.md` is an older language-choice note.

@@ -17,14 +17,16 @@ Reference Godot 4.6 3D prototype integrating `gu_core` and `gu_gameplay` on top 
 
 ## Architecture Highlights
 
-- **Shared Plugins**: `addons/gu_core` and `addons/gu_gameplay` synced from `godot/addons/` via `uv run gu addons sync`.
+- **Shared Plugins**: `addons/gu_core` and `addons/gu_gameplay` synced from `godot/addons/` via `./start.sh addons sync`.
 - **World & Terrain**: `MapGenerator`, `MapData`, `WorldLocator`, `TerrainBuildContext`, and `WorldSpawner` / `WorldCommands`.
 - **Gameplay Loop**: `WorldBeacon` + `EventBus` -> `QuestTracker` + `FlagStore`; `ResourceNode` -> `HealthComponent` -> `PoolService`-backed `WorldPickup` -> `InventoryContainer` + `SaveService`.
 
 ## Run & Test
 
+From the repository root:
+
 ```bash
-./start-walk.sh
-# or headless full check from shell/:
-cd ../../shell && uv run gu check
+./start.sh play
+# headless quality gate (addon parity, pytest, Godot tests, smoke):
+./start.sh check
 ```
