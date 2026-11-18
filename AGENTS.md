@@ -100,7 +100,7 @@ Package: `shell/src/game_utils_audio/`. Console script: `gu` only. Entry: `cli.p
 | `addons sync` | `godot_project.py` | Copy `godot/addons/{gu_core,gu_gameplay}` into a project. `--prune` deletes stale files |
 | `init` | `godot_project.py` | Copy `godot/templates/starter` + addons into a new directory |
 | `assets audit` / `assets credits` | `assets_audit.py` | License scan, `CREDITS.md` |
-| `data validate` / `data build` | `data_pipeline.py` | CSV/JSON tables and `*_i18n.csv`. Build writes JSON, `i18n_manifest.json`, and a keep `.import` beside each localization CSV. Locale columns are the languages Settings shows |
+| `data validate` / `data build` | `data_pipeline.py` | CSV/JSON tables and `*_i18n.csv`. Schema `refs` catch orphan ids, `i18n` columns must exist as translation keys, and `{token}` sets must match across locales. Build writes JSON, `i18n_manifest.json`, and a keep `.import` beside each localization CSV. Locale columns are the languages Settings shows |
 | `check` | `quality.py` | Addon parity, pytest, Godot import, `tests/test_runner.gd`, 30-frame smoke |
 | `export` | `quality.py` | Headless export from `export_presets.cfg` |
 

@@ -20,6 +20,18 @@ const WorldBeaconScript = preload("res://scripts/world/world_beacon.gd")
 const InputRouterScript = preload("res://addons/gu_core/input/input_router.gd")
 const SettingsStoreScript = preload("res://addons/gu_core/settings/settings_store.gd")
 const TranslationCatalogScript = preload("res://addons/gu_core/i18n/translation_catalog.gd")
+const FontFallbackScript = preload("res://addons/gu_core/i18n/font_fallback.gd")
+const ShaderWarmupScript = preload("res://addons/gu_core/flow/shader_warmup.gd")
+const TooltipFrameScript = preload("res://addons/gu_core/ui/tooltip_frame.gd")
+const GameplayTagsScript = preload("res://addons/gu_gameplay/status/gameplay_tags.gd")
+const StatusControllerScript = preload("res://addons/gu_gameplay/status/status_controller.gd")
+const CooldownTrackerScript = preload("res://addons/gu_gameplay/status/cooldown_tracker.gd")
+const HurtboxScript = preload("res://addons/gu_gameplay/combat/hurtbox.gd")
+const HitboxScript = preload("res://addons/gu_gameplay/combat/hitbox.gd")
+const JuiceBusScript = preload("res://addons/gu_gameplay/combat/juice_bus.gd")
+const CoachMarksScript = preload("res://addons/gu_gameplay/ui/coach_marks.gd")
+const AiAgentScript = preload("res://addons/gu_gameplay/ai/agent.gd")
+const AiPerceptionScript = preload("res://addons/gu_gameplay/ai/perception.gd")
 const AudioManagerScript = preload("res://addons/gu_core/audio/audio_manager.gd")
 const SaveServiceScript = preload("res://addons/gu_core/save/save_service.gd")
 const UIRouterScript = preload("res://addons/gu_core/ui/ui_router.gd")
@@ -76,6 +88,7 @@ class MockWorld extends Node:
 
 
 var _ran: bool = false
+var _quit_through_flow: bool = false
 
 
 func _process(_delta: float) -> bool:
@@ -85,6 +98,10 @@ func _process(_delta: float) -> bool:
 	_run_all()
 	if _failures.is_empty():
 		print("[PASS] All %d Phase 1 + Phase 2 + Phase 3 assertions passed." % _passed)
+		if _quit_through_flow:
+			var flow := get_root().get_node_or_null("GameFlow")
+			if flow != null and flow.has_method("quit_game"):
+				flow.call("quit_game")
 		quit(0)
 	else:
 		for f in _failures:
@@ -131,6 +148,13 @@ func _run_all() -> void:
 	_test_save_slots_panel_and_keybind_list()
 	_test_world_entity_primitives()
 	_test_gameplay_hud()
+	_test_loading_and_shader_warmup()
+	_test_status_cooldown_and_tags()
+	_test_hitbox_and_juice()
+	_test_input_glyphs_focus_tooltip_coach()
+	_test_bug_report_and_platform()
+	_test_ai_perception()
+	_test_play_smoke()
 
 
 func _test_map_data_and_generator() -> void:
@@ -456,6 +480,7 @@ func _test_settings_locale() -> void:
 	store.load_settings()
 	var err: Error = store.load_translations()
 	_assert(err == OK, "SettingsStore loads localization CSV into TranslationServer")
+	_assert(FontFallbackScript.is_applied(), "CJK font fallback is attached to ThemeDB")
 	_assert(store.get_locales().size() == 2, "SettingsStore locales come from the catalog")
 	store.set_value("locale", "zh")
 	_assert(str(store.get_value("locale")) == "zh", "SettingsStore accepts catalog locale zh")
@@ -2004,6 +2029,202 @@ func _test_gameplay_hud() -> void:
 	_assert(hud.quests != null, "GameplayHud hosts the quest tracker")
 	get_root().remove_child(hud)
 	hud.free()
+
+
+func _test_loading_and_shader_warmup() -> void:
+	var ui := get_root().get_node_or_null("UIRouter")
+	_assert(ui != null, "UIRouter autoload is available for loading progress")
+	if ui == null:
+		return
+	ui.call("set_loading_progress", 0.0)
+	_assert(is_equal_approx(float(ui.call("get_loading_progress")), 0.0), "Loading progress starts at 0")
+	ui.call("set_loading_progress", 1.0)
+	_assert(is_equal_approx(float(ui.call("get_loading_progress")), 1.0), "Loading progress reaches 1")
+	ui.call("hide_loading")
+
+	var warmup := ShaderWarmupScript.new()
+	get_root().add_child(warmup)
+	_assert(not warmup.is_queued_for_deletion(), "Shader warmup stays for the frame it is added")
+	warmup._process(0.016)
+	_assert(warmup.warmed and warmup.is_queued_for_deletion(), "Shader warmup leaves the tree after one process step")
+
+
+func _test_status_cooldown_and_tags() -> void:
+	var tags := GameplayTagsScript.new()
+	tags.add(&"State.Stunned")
+	_assert(tags.has(&"State") and tags.has(&"State.Stunned"), "GameplayTags treats State.Stunned as State")
+	_assert(not tags.has(&"State.Burning"), "GameplayTags does not match a sibling tag")
+
+	var stats := StatSet.new()
+	stats.define_stat(&"speed", 10.0)
+	var status := StatusControllerScript.new()
+	status.stats = stats
+	status.apply_status(&"haste", {"duration": 1.0, "stat_id": &"speed", "mult": 1.3, "tags": ["State.Haste"]})
+	_assert(is_equal_approx(stats.get_max(&"speed"), 13.0), "Haste raises the speed maximum by 30 percent")
+	_assert(status.tags.has(&"State"), "Haste grants the State tag family")
+	status.advance(1.1)
+	_assert(not status.has_status(&"haste"), "Haste expires after its duration")
+	_assert(is_equal_approx(stats.get_max(&"speed"), 10.0), "Expired haste restores the original speed maximum")
+	_assert(not status.tags.has(&"State.Haste"), "Expired haste removes its tag")
+
+	var health := HealthComponent.new()
+	health.max_hp = 20.0
+	status.health = health
+	status.apply_status(&"poison", {"duration": 5.0, "tick_interval": 1.0, "damage_per_tick": 5.0})
+	status.advance(1.0)
+	_assert(is_equal_approx(health.get_hp(), 15.0), "Poison tick damages health")
+
+	var cooldowns := CooldownTrackerScript.new()
+	_assert(cooldowns.try_start(&"mine", 1.0), "Cooldown accepts the first use")
+	_assert(not cooldowns.try_start(&"mine", 1.0), "Cooldown rejects a second use while active")
+	cooldowns.advance(1.0)
+	_assert(cooldowns.try_start(&"mine", 0.5), "Cooldown allows the action after it elapses")
+	status.free()
+
+
+func _test_hitbox_and_juice() -> void:
+	var health := HealthComponent.new()
+	health.max_hp = 100.0
+	health.invuln_time = 10.0
+	var hurt := HurtboxScript.new()
+	hurt.health = health
+	hurt.faction = &"player"
+	get_root().add_child(hurt)
+	var hit := HitboxScript.new()
+	hit.faction = &"enemy"
+	hit.damage = 10.0
+	get_root().add_child(hit)
+	var camera := CameraRig.new()
+	var juice := JuiceBusScript.new()
+	juice.camera = camera
+	get_root().add_child(juice)
+
+	var applied := hit.strike(hurt, false, Vector3.FORWARD)
+	_assert(is_equal_approx(applied, 10.0), "Hitbox damages a hostile hurtbox")
+	_assert(juice.floater_count == 1 and is_equal_approx(juice.last_amount, 10.0), "Juice bus records one floater for the hit")
+	_assert(camera.get_shake_remaining() > 0.0, "Juice bus shakes the camera")
+	_assert(Engine.time_scale < 0.99, "Juice bus applies a short hitstop")
+	var blocked := hit.strike(hurt, false, Vector3.FORWARD)
+	_assert(is_equal_approx(blocked, 0.0), "Invulnerability frames ignore the second hit")
+	juice.advance(1.0)
+	_assert(is_equal_approx(Engine.time_scale, 1.0), "Hitstop restores time scale")
+
+	var ally := HurtboxScript.new()
+	ally.health = HealthComponent.new()
+	ally.health.max_hp = 50.0
+	ally.faction = &"enemy"
+	get_root().add_child(ally)
+	_assert(is_equal_approx(hit.strike(ally, false, Vector3.FORWARD), 0.0), "Same-faction hits are ignored")
+
+	Engine.time_scale = 1.0
+	juice.queue_free()
+	hurt.queue_free()
+	hit.queue_free()
+	ally.queue_free()
+
+
+func _test_input_glyphs_focus_tooltip_coach() -> void:
+	var router := InputRouterScript.new()
+	router.register_action(&"interact", [KEY_E], "Interact")
+	_assert(router.glyph_name(&"interact") == "E", "Keyboard glyph uses the bound key label")
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_A
+	pad.pressed = true
+	router.note_input_event(pad)
+	_assert(router.glyph_name(&"interact") == "A", "Joypad input switches the interact glyph to A")
+
+	var ui := UIRouterScript.new()
+	get_root().add_child(ui)
+	var button := Button.new()
+	button.name = "RememberedButton"
+	get_root().add_child(button)
+	button.grab_focus()
+	var packed := PackedScene.new()
+	var probe := Control.new()
+	packed.pack(probe)
+	probe.free()
+	ui.register_screen(&"focus_probe", packed)
+	ui.push_screen(&"focus_probe")
+	ui.pop_screen()
+	_assert(get_root().gui_get_focus_owner() == button, "Closing a screen restores the previous focus")
+	button.queue_free()
+	ui.queue_free()
+
+	var tip := TooltipFrameScript.new()
+	tip.request("Wood", Rect2(1200, 10, 40, 20), Vector2(1280, 720))
+	tip.advance(0.05)
+	_assert(not tip.shown, "Tooltip waits out its delay")
+	tip.advance(0.2)
+	_assert(tip.shown and tip.position.x < 1200.0, "Tooltip flips inward at the right edge")
+
+	var flags := FlagStore.new()
+	_assert(CoachMarksScript.try_show(flags, &"first_pickup"), "Coach mark shows the first time")
+	_assert(not CoachMarksScript.try_show(flags, &"first_pickup"), "Coach mark does not repeat for the same flag")
+
+
+func _test_bug_report_and_platform() -> void:
+	GuLog.info("bug", "pack-test")
+	var console := get_root().get_node_or_null("DevConsole")
+	_assert(console != null, "DevConsole autoload can write a bug pack")
+	if console != null:
+		var written := str(console.call("write_bug_report", "user://bug_reports/unit", Vector3(1, 2, 3)))
+		_assert(FileAccess.file_exists(written.path_join("log.txt")), "Bug pack contains the log")
+		_assert(FileAccess.file_exists(written.path_join("screenshot.png")), "Bug pack contains a screenshot")
+		_assert(FileAccess.file_exists(written.path_join("save.json")), "Bug pack contains a save copy")
+		var position_text := FileAccess.get_file_as_string(written.path_join("position.json"))
+		_assert("1" in position_text and "2" in position_text and "3" in position_text, "Bug pack records the player position")
+
+	var platform := get_root().get_node_or_null("PlatformService")
+	_assert(platform != null, "PlatformService autoload is registered")
+	if platform != null:
+		platform.call("unlock_achievement", "test_foundation_badge")
+		_assert(bool(platform.call("has_achievement", "test_foundation_badge")), "Mock platform records an achievement")
+		var raw := FileAccess.get_file_as_string("user://platform_mock.json")
+		_assert("test_foundation_badge" in raw, "Mock platform writes the achievement JSON")
+
+
+func _test_ai_perception() -> void:
+	var origin := Vector3.ZERO
+	var forward := Vector3(0, 0, -1)
+	var agent := AiAgentScript.new()
+	agent.tick(0.1, origin, forward, Vector3(0, 0, -20), true)
+	_assert(agent.mode == AiAgentScript.Mode.PATROL, "A distant target leaves the agent on patrol")
+	var chase: Vector3 = agent.tick(0.1, origin, forward, Vector3(0, 0, -3), true)
+	_assert(agent.mode == AiAgentScript.Mode.CHASE and chase.length() > 0.1, "A target inside the cone starts a chase")
+	agent.tick(0.2, origin, forward, Vector3(0, 0, -3), false)
+	_assert(agent.mode == AiAgentScript.Mode.LEASH, "Losing the target starts the leash timer")
+	agent.tick(1.0, origin, forward, Vector3(0, 0, -3), false)
+	_assert(agent.mode == AiAgentScript.Mode.PATROL, "The agent returns to patrol after the leash timeout")
+	_assert(AiPerceptionScript.hears(origin, Vector3(1, 0, 0), 4.0), "Hearing range includes a nearby noise")
+	agent.tick(0.1, origin, forward, Vector3(0, 0, -3), false, Vector3(1, 0, 0))
+	_assert(agent.blackboard.has_value(&"heard_position"), "A heard noise is written to the blackboard")
+
+
+func _test_play_smoke() -> void:
+	var flow := get_root().get_node_or_null("GameFlow")
+	var saves := get_root().get_node_or_null("SaveService")
+	_assert(flow != null and saves != null, "Play smoke can use GameFlow and SaveService")
+	if flow == null or saves == null:
+		return
+	var world := MockWorld.new()
+	get_root().add_child(world)
+	flow.call("register_world", world)
+	_assert(flow.call("get_world") == world, "Play smoke registers the world")
+	flow.call("start_new_game", {"seed": 7})
+	_assert(int(flow.call("get_state")) == GameFlowScript.State.PLAYING, "Play smoke reaches PLAYING")
+	_assert(world.started_count >= 1, "Play smoke starts a new world")
+	var save_err := int(flow.call("save_current_game", "play_smoke"))
+	_assert(save_err == OK, "Play smoke writes a save")
+	world.applied_doc = {}
+	var loaded := bool(flow.call("load_game", "play_smoke"))
+	_assert(loaded, "Play smoke loads the save")
+	var applied := world.applied_doc
+	var world_doc: Dictionary = applied.get("world", {}) as Dictionary
+	_assert(int(world_doc.get("seed", -1)) == 777, "Play smoke restores the saved world seed")
+	saves.call("delete_slot", "play_smoke")
+	world.queue_free()
+	if _failures.is_empty():
+		_quit_through_flow = true
 
 
 func _find_label_prefix(root: Node, prefix: String) -> String:

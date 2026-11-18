@@ -14,6 +14,7 @@ const TITLE_SCENE := preload("res://scenes/ui/title_screen.tscn")
 const PAUSE_SCENE := preload("res://scenes/ui/pause_menu.tscn")
 const SETTINGS_SCENE := preload("res://scenes/ui/settings_panel.tscn")
 const WorldLocatorScript = preload("res://scripts/map/world_locator.gd")
+const ShaderWarmupScript = preload("res://addons/gu_core/flow/shader_warmup.gd")
 
 var _landform_mode: int = -1 ## -1 = auto by seed, 0..3 = specific MapGenerator.Landform
 var _pending_spawn_override: Dictionary = {}
@@ -31,7 +32,12 @@ func _ready() -> void:
 	_register_ui_screens()
 	_setup_quests()
 	_setup_dialogue()
-	# Wait one frame so TerrainMap._ready has built the initial landscape
+	var warmup := ShaderWarmupScript.new()
+	var terrain_shader := load("res://shaders/terrain_ground.gdshader") as Shader
+	if terrain_shader != null:
+		warmup.add_shader(terrain_shader)
+	add_child(warmup)
+	# Wait one frame so TerrainMap._ready has built the initial landscape and shaders can compile.
 	await get_tree().process_frame
 	if _player.has_method("set_context"):
 		_player.call("set_context", _terrain, _sky_time)
@@ -373,8 +379,9 @@ func _refresh_overlay() -> void:
 		if is_instance_valid(b) and b.is_lit:
 			lit_spots.append("Spot %d" % b.beacon_index)
 	_debug_overlay.set_reached_spots(lit_spots)
-	_debug_overlay.set_quest_summary("%s  |  %s" % [
-		_quest_line(&"activate_beacons", "LINK"),
-		_quest_line(&"gather_wood", "TIMBER"),
-	])
+	if _debug_overlay.has_method("set_quest_summary"):
+		_debug_overlay.set_quest_summary("%s  |  %s" % [
+			_quest_line(&"activate_beacons", "LINK"),
+			_quest_line(&"gather_wood", "TIMBER"),
+		])
 	_debug_overlay.refresh()

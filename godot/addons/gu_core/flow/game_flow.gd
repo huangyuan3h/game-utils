@@ -182,7 +182,11 @@ func load_scene_async(scene_path: String, transition_s: float = 0.25) -> bool:
 		if transition_s > 0.0 and ui.has_method("fade_out"):
 			await ui.call("fade_out", transition_s)
 
+	if ui != null and ui.has_method("set_loading_progress"):
+		ui.call("set_loading_progress", 0.0)
 	var packed := await _scene_loader.load_packed_async(scene_path)
+	if ui != null and ui.has_method("hide_loading"):
+		ui.call("hide_loading")
 	if packed == null:
 		if ui != null and transition_s > 0.0 and ui.has_method("fade_in"):
 			await ui.call("fade_in", transition_s)
@@ -202,6 +206,14 @@ func _ensure_scene_loader() -> void:
 	_scene_loader = SceneLoader.new()
 	_scene_loader.name = "SceneLoader"
 	add_child(_scene_loader)
+	if not _scene_loader.progress_changed.is_connected(_on_scene_load_progress):
+		_scene_loader.progress_changed.connect(_on_scene_load_progress)
+
+
+func _on_scene_load_progress(_scene_path: String, progress: float) -> void:
+	var ui := _ui_router()
+	if ui != null and ui.has_method("set_loading_progress"):
+		ui.call("set_loading_progress", progress)
 
 
 func quit_game() -> void:

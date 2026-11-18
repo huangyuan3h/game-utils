@@ -26,6 +26,8 @@ var _active_toasts: int = 0
 var _transition_rect: ColorRect = null
 var _transition_tween: Tween = null
 var _transitioning: bool = false
+var _loading_root: Control = null
+var _loading_bar: ProgressBar = null
 
 
 class ConfirmDialog extends Control:
@@ -195,6 +197,10 @@ func pop_screen() -> void:
 			node.call("on_ui_exit")
 		node.queue_free()
 
+	var remembered: Variant = entry.get("focus", null)
+	if remembered is Control and is_instance_valid(remembered):
+		(remembered as Control).grab_focus()
+
 	if not _stack.is_empty():
 		var new_top := _stack[_stack.size() - 1]["node"] as Control
 		if is_instance_valid(new_top):
@@ -228,6 +234,23 @@ func top_screen_id() -> StringName:
 	if _stack.is_empty():
 		return &""
 	return _stack[_stack.size() - 1]["id"] as StringName
+
+
+func set_loading_progress(progress: float) -> void:
+	_ensure_loading_bar()
+	_loading_root.visible = true
+	_loading_bar.value = clampf(progress, 0.0, 1.0) * 100.0
+
+
+func hide_loading() -> void:
+	if _loading_root != null:
+		_loading_root.visible = false
+
+
+func get_loading_progress() -> float:
+	if _loading_bar == null:
+		return 0.0
+	return _loading_bar.value / 100.0
 
 
 func show_toast(message: String, duration: float = 2.6, tone: StringName = &"info") -> void:
@@ -327,7 +350,11 @@ func _push_instance(screen_id: StringName, inst: Control, params: Dictionary, in
 
 	_root.add_child(inst)
 	var owner := StringName("ui:" + String(screen_id) + ":" + str(inst.get_instance_id()))
-	_stack.append({"id": screen_id, "node": inst, "owner": owner})
+	var previous_focus: Control = null
+	var viewport := get_viewport()
+	if viewport != null:
+		previous_focus = viewport.gui_get_focus_owner()
+	_stack.append({"id": screen_id, "node": inst, "owner": owner, "focus": previous_focus})
 
 	var input_router := get_node_or_null("/root/InputRouter")
 	if input_router != null and input_router.has_method("push_context"):
@@ -336,6 +363,27 @@ func _push_instance(screen_id: StringName, inst: Control, params: Dictionary, in
 	if inst.has_method("on_ui_enter"):
 		inst.call("on_ui_enter", params)
 	screen_pushed.emit(screen_id)
+
+
+func _ensure_loading_bar() -> void:
+	_ensure_layer()
+	if _loading_root != null and is_instance_valid(_loading_root):
+		return
+	var overlay := _overlay_layer.get_node_or_null("OverlayRoot") as Control
+	if overlay == null:
+		return
+	_loading_root = CenterContainer.new()
+	_loading_root.name = "LoadingRoot"
+	_loading_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_loading_root.visible = false
+	_loading_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	overlay.add_child(_loading_root)
+	_loading_bar = ProgressBar.new()
+	_loading_bar.name = "LoadingBar"
+	_loading_bar.custom_minimum_size = Vector2(320, 18)
+	_loading_bar.max_value = 100.0
+	_loading_bar.value = 0.0
+	_loading_root.add_child(_loading_bar)
 
 
 func _pump_toasts() -> void:

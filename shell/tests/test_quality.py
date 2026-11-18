@@ -56,6 +56,12 @@ def test_run_project_check_skip_subprocesses() -> None:
     assert report.steps[0].name == "addons-parity"
 
 
+def test_cli_test_skip_godot_exits_zero() -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["test", "--skip-godot"])
+    assert exc.value.code == 0
+
+
 def test_cli_check_skip_flags_exits_zero() -> None:
     with pytest.raises(SystemExit) as exc:
         cli.main(["check", "--skip-pytest", "--skip-godot"])

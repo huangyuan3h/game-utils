@@ -5,6 +5,7 @@ signal command_executed(line: String, output: String)
 signal toggled(open: bool)
 
 const TOGGLE_ACTION := &"toggle_dev_console"
+const BugReportScript := preload("res://addons/gu_core/debug/bug_report.gd")
 const CONTEXT_OWNER := &"dev_console"
 
 var input_router: Node = null
@@ -103,6 +104,10 @@ func execute(line: String) -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo and (event as InputEventKey).keycode == KEY_F9:
+		write_bug_report()
+		get_viewport().set_input_as_handled()
+		return
 	if not InputMap.has_action(TOGGLE_ACTION):
 		return
 	if event.is_action_pressed(TOGGLE_ACTION):
@@ -113,6 +118,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _is_open and event.is_action_pressed("ui_cancel"):
 		set_open(false)
 		get_viewport().set_input_as_handled()
+
+
+func write_bug_report(dir_path: String = "user://bug_reports/latest", position: Vector3 = Vector3.ZERO) -> String:
+	var save_text := ""
+	var save_svc := get_node_or_null("/root/SaveService")
+	if save_svc != null and save_svc.has_method("get_slot_path"):
+		var slot_path := str(save_svc.call("get_slot_path", "autosave"))
+		if FileAccess.file_exists(slot_path):
+			save_text = FileAccess.get_file_as_string(slot_path)
+	return BugReportScript.write_pack(dir_path, position, save_text)
 
 
 func _register_builtins() -> void:

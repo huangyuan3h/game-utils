@@ -5,8 +5,10 @@ signal context_changed(active_context: int, stack_size: int)
 signal bindings_changed(action: StringName)
 
 enum Context { GAMEPLAY, UI, MODAL, CUTSCENE }
+enum Device { KEYBOARD, XBOX, PLAYSTATION }
 
 var settings_store: Node = null
+var device: Device = Device.KEYBOARD
 
 var _stack: Array[Dictionary] = []
 var _registered_actions: Dictionary = {} ## StringName -> {"defaults": Array[int], "label": String, "current_key": int}
@@ -16,6 +18,29 @@ var _action_order: Array[StringName] = []
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_connect_settings_store()
+
+
+func _input(event: InputEvent) -> void:
+	note_input_event(event)
+
+
+func note_input_event(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		var pad_name := Input.get_joy_name(event.device).to_lower()
+		if pad_name.contains("playstation") or pad_name.contains("dualshock") or pad_name.contains("dualsense"):
+			device = Device.PLAYSTATION
+		else:
+			device = Device.XBOX
+	elif event is InputEventKey or event is InputEventMouse:
+		device = Device.KEYBOARD
+
+
+func glyph_name(action: StringName) -> String:
+	if device == Device.PLAYSTATION:
+		return "Cross" if action == &"interact" else "Pad"
+	if device == Device.XBOX:
+		return "A" if action == &"interact" else "Pad"
+	return get_action_key_label(action)
 
 
 func push_context(ctx: Context, owner: StringName) -> void:
@@ -205,6 +230,8 @@ func _apply_key_to_input_map(action: StringName, keys: Array) -> void:
 func _get_store() -> Node:
 	if settings_store != null and is_instance_valid(settings_store):
 		return settings_store
+	if not is_inside_tree():
+		return null
 	return get_node_or_null("/root/SettingsStore")
 
 

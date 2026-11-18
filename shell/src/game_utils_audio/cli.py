@@ -8,7 +8,12 @@ from pathlib import Path
 from game_utils_audio import __version__
 from game_utils_audio.assets_audit import audit_project_assets, write_credits
 from game_utils_audio.bgm import acestep
-from game_utils_audio.data_pipeline import build_data_dir, validate_data_dir
+from game_utils_audio.data_pipeline import (
+    build_data_dir,
+    extract_tr_keys,
+    merge_translation_keys,
+    validate_data_dir,
+)
 from game_utils_audio.godot_project import init_godot_project, sync_addons
 from game_utils_audio.launcher import run_home
 from game_utils_audio.menu import run_menu
@@ -20,7 +25,7 @@ from game_utils_audio.paths import (
     SFX_OUTPUT_DIR,
     ensure_output_dirs,
 )
-from game_utils_audio.quality import export_godot_project, run_project_check
+from game_utils_audio.quality import export_godot_project, run_godot_tests, run_project_check
 from game_utils_audio.sfx import builtin, jsfxr, library as sfx_library, rfxgen
 from game_utils_audio.sync import sync_audio_assets
 
@@ -268,6 +273,20 @@ def _cmd_data_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_data_extract(args: argparse.Namespace) -> int:
+    keys, scanned = extract_tr_keys([Path(item) for item in args.scan])
+    locales = [part.strip() for part in str(args.locales).split(",") if part.strip()]
+    res = merge_translation_keys(Path(args.out), keys, locales=locales)
+    res.scanned_files = scanned
+    print(
+        f"[DATA-EXTRACT] scanned_files={res.scanned_files} found={len(res.found_keys)} "
+        f"added={len(res.added_keys)} out={res.csv_path}"
+    )
+    for key in res.added_keys:
+        print(f"  + {key}")
+    return 0
+
+
 def _cmd_data_build(args: argparse.Namespace) -> int:
     res = build_data_dir(Path(args.src), Path(args.out), dry_run=args.dry_run)
     mode = "DRY-RUN" if res.dry_run else "DATA-BUILD"
@@ -275,6 +294,16 @@ def _cmd_data_build(args: argparse.Namespace) -> int:
     for rel in res.written_files:
         print(f"  + {rel}")
     return 0
+
+
+def _cmd_test(args: argparse.Namespace) -> int:
+    target = Path(args.project) if args.project else DEFAULT_GODOT_PROJECT_DIR
+    report = run_godot_tests(target, godot_bin=args.godot, skip_godot=args.skip_godot)
+    print(f"[TEST] project={report.project_dir}")
+    for step in report.steps:
+        mark = "PASS" if step.ok else "FAIL"
+        print(f"  [{mark}] {step.name}: {step.detail}")
+    return 0 if report.ok else 1
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
@@ -453,6 +482,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_data_val.add_argument("src", help="Source data directory")
     p_data_val.set_defaults(func=_cmd_data_validate)
 
+    p_data_extract = data_sub.add_parser("extract", help="Merge tr() keys into a localization CSV")
+    p_data_extract.add_argument("--scan", action="append", required=True, help="File or directory to scan (repeatable)")
+    p_data_extract.add_argument("--out", required=True, help="Localization CSV to create or update")
+    p_data_extract.add_argument(
+        "--locales",
+        default="en,zh",
+        help="Locale columns used only when --out does not exist yet",
+    )
+    p_data_extract.set_defaults(func=_cmd_data_extract)
+
     p_data_build = data_sub.add_parser("build", help="Validate and compile data tables into Godot JSON")
     p_data_build.add_argument("src", help="Source data directory")
     p_data_build.add_argument("--out", required=True, help="Output Godot data directory")
@@ -460,6 +499,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_data_build.set_defaults(func=_cmd_data_build)
 
     # --- Quality Gate & Export ---
+    p_test = sub.add_parser("test", help="Run the Godot headless test runner, including the play-flow smoke")
+    p_test.add_argument("--project", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
+    p_test.add_argument("--godot", default=None, help="Path to Godot binary")
+    p_test.add_argument("--skip-godot", action="store_true", help="Skip the Godot process")
+    p_test.set_defaults(func=_cmd_test)
+
     p_check = sub.add_parser("check", help="Run addons parity, pytest, and Godot headless checks")
     p_check.add_argument("--project", default=None, help=f"Godot project dir (default: {DEFAULT_GODOT_PROJECT_DIR})")
     p_check.add_argument("--godot", default=None, help="Path to Godot binary")

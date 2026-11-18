@@ -7,6 +7,7 @@ signal settings_loaded
 const DEFAULT_PATH := "user://settings.cfg"
 const SECTION := "preferences"
 const TranslationCatalogScript := preload("res://addons/gu_core/i18n/translation_catalog.gd")
+const FontFallbackScript := preload("res://addons/gu_core/i18n/font_fallback.gd")
 
 const DEFAULTS := {
 	"master_volume": 1.0,
@@ -185,6 +186,7 @@ func _apply_locale() -> void:
 	var code := str(_values.get("locale", "en"))
 	ProjectSettings.set_setting("internationalization/locale/fallback", _fallback_locale())
 	TranslationServer.set_locale(code)
+	FontFallbackScript.apply()
 
 
 func _apply_window_mode() -> void:

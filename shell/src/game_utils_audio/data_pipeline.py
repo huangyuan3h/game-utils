@@ -46,6 +46,8 @@ def _is_localization_csv(path: Path, fieldnames: Sequence[str] | None = None) ->
 
 # Godot locale codes: en, zh, zh_CN, pt-BR. Hyphens are canonicalized to underscores.
 _LOCALE_RE = re.compile(r"^[A-Za-z]{2,3}([_-][A-Za-z0-9]+)*$")
+# Format tokens such as {0} and {player}. Locales of one key must carry the same set.
+_PLACEHOLDER_RE = re.compile(r"\{[^{}]+\}")
 I18N_MANIFEST_NAME = "i18n_manifest.json"
 _KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
 
@@ -137,11 +139,34 @@ def _validate_localization_csv(path: Path, rel: str, errors: list[str]) -> tuple
             if key in seen_keys:
                 errors.append(f"{rel}:{row_idx}: duplicate translation key '{key}'")
             seen_keys.add(key)
+            token_sets: list[tuple[str, set[str]]] = []
             for loc in raw_locales:
                 val = row.get(loc)
                 if val is None or str(val).strip() == "":
                     errors.append(f"{rel}:{row_idx}: missing '{loc}' translation for key '{key}'")
+                    continue
+                token_sets.append((loc, set(_PLACEHOLDER_RE.findall(str(val)))))
+            _check_placeholder_parity(rel, row_idx, key, token_sets, errors)
         return locales, seen_keys
+
+
+def _check_placeholder_parity(
+    rel: str,
+    row_idx: int,
+    key: str,
+    token_sets: Sequence[tuple[str, set[str]]],
+    errors: list[str],
+) -> None:
+    """Require every translated locale of one key to use the same {token} set."""
+    if len(token_sets) < 2:
+        return
+    base_loc, base_tokens = token_sets[0]
+    for loc, tokens in token_sets[1:]:
+        if tokens != base_tokens:
+            errors.append(
+                f"{rel}:{row_idx}: placeholder mismatch for '{key}': "
+                f"{loc} has {sorted(tokens)} but {base_loc} has {sorted(base_tokens)}"
+            )
 
 
 def _cross_check_localization(
@@ -221,6 +246,7 @@ def validate_data_dir(src_dir: Path) -> DataValidationResult:
         return result
 
     localization_entries: list[tuple[str, list[str], set[str]]] = []
+    schemas: dict[str, dict[str, Any]] = {}
 
     for path in sorted(root.rglob("*")):
         if not path.is_file():
@@ -250,6 +276,7 @@ def validate_data_dir(src_dir: Path) -> DataValidationResult:
                     localization_entries.append((rel, locales, keys))
                     continue
                 raw_rows = [dict(r) for r in reader]
+            schemas[rel] = schema
             result.tables[rel] = _validate_rows(raw_rows, schema, rel, result.errors)
         else:
             try:
@@ -264,10 +291,140 @@ def validate_data_dir(src_dir: Path) -> DataValidationResult:
             else:
                 result.errors.append(f"{rel}: JSON table must be a list or {{'rows': [...]}}")
                 continue
+            schemas[rel] = schema
             result.tables[rel] = _validate_rows(raw_rows, schema, rel, result.errors)
 
     result.localization_locales = _cross_check_localization(localization_entries, result.errors)
+    translation_keys: set[str] = set()
+    for _rel, _locales, keys in localization_entries:
+        translation_keys.update(keys)
+    _check_references(result.tables, schemas, result.errors)
+    _check_i18n_keys(result.tables, schemas, translation_keys, result.errors)
     return result
+
+
+def _parse_ref_spec(spec: Any) -> tuple[str, str, bool]:
+    """Return ``(table, column, is_list)`` for a schema ``refs`` entry.
+
+    A string ``"items.csv#id"`` is a single id. An object may set ``list`` so
+    a cell can hold ``wood|ore`` or a JSON array of ids.
+    """
+    if isinstance(spec, str):
+        table, sep, column = spec.partition("#")
+        if not sep or not table.strip() or not column.strip():
+            raise ValueError(f"expected 'table#column', got {spec!r}")
+        return table.strip(), column.strip(), False
+    if isinstance(spec, dict):
+        table = str(spec.get("table", "")).strip()
+        column = str(spec.get("column", "id")).strip() or "id"
+        if not table:
+            raise ValueError(f"ref object needs 'table': {spec!r}")
+        return table, column, bool(spec.get("list", False))
+    raise ValueError(f"expected string or object, got {spec!r}")
+
+
+def _ref_values(value: Any, as_list: bool) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if text == "":
+        return []
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    if as_list:
+        return [part.strip() for part in text.split("|") if part.strip()]
+    return [text]
+
+
+def _column_index(tables: dict[str, list[dict[str, Any]]]) -> dict[tuple[str, str], set[str]]:
+    index: dict[tuple[str, str], set[str]] = {}
+    for rel, rows in tables.items():
+        for row in rows:
+            for column, value in row.items():
+                if value is None or str(value).strip() == "":
+                    continue
+                index.setdefault((rel, str(column)), set()).add(str(value))
+    return index
+
+
+def _check_references(
+    tables: dict[str, list[dict[str, Any]]],
+    schemas: dict[str, dict[str, Any]],
+    errors: list[str],
+) -> None:
+    """Reject ids that point at a missing row in another table."""
+    index = _column_index(tables)
+    reported_targets: set[tuple[str, str, str]] = set()
+    for rel, rows in tables.items():
+        raw_refs = schemas.get(rel, {}).get("refs", {})
+        if not raw_refs:
+            continue
+        if not isinstance(raw_refs, dict):
+            errors.append(f"{rel}: schema 'refs' must be an object")
+            continue
+        parsed: dict[str, tuple[str, str, bool]] = {}
+        for column, spec in raw_refs.items():
+            try:
+                parsed[str(column)] = _parse_ref_spec(spec)
+            except ValueError as exc:
+                errors.append(f"{rel}: invalid ref for '{column}': {exc}")
+        for column, (target, target_column, as_list) in parsed.items():
+            target_key = (rel, column, target)
+            if target not in tables:
+                if target_key not in reported_targets:
+                    errors.append(f"{rel}: ref field '{column}' targets missing table '{target}'")
+                    reported_targets.add(target_key)
+                continue
+            if (target, target_column) not in index:
+                if target_key not in reported_targets:
+                    errors.append(
+                        f"{rel}: ref field '{column}' targets missing column '{target}#{target_column}'"
+                    )
+                    reported_targets.add(target_key)
+                continue
+            known = index[(target, target_column)]
+            for idx, row in enumerate(rows, start=1):
+                if column not in row:
+                    continue
+                for ref_id in _ref_values(row.get(column), as_list):
+                    if ref_id not in known:
+                        errors.append(
+                            f"{rel}: row {idx} field '{column}' references missing "
+                            f"{target}#{target_column} '{ref_id}'"
+                        )
+
+
+def _check_i18n_keys(
+    tables: dict[str, list[dict[str, Any]]],
+    schemas: dict[str, dict[str, Any]],
+    translation_keys: set[str],
+    errors: list[str],
+) -> None:
+    """Reject translation keys named by a table but absent from every i18n CSV."""
+    for rel, rows in tables.items():
+        columns = schemas.get(rel, {}).get("i18n", [])
+        if not columns:
+            continue
+        if not isinstance(columns, list):
+            errors.append(f"{rel}: schema 'i18n' must be a list of column names")
+            continue
+        for idx, row in enumerate(rows, start=1):
+            for column in columns:
+                value = row.get(str(column))
+                if value is None or str(value).strip() == "":
+                    continue
+                key = str(value).strip()
+                if key not in translation_keys:
+                    errors.append(
+                        f"{rel}: row {idx} field '{column}' translation key '{key}' is not defined"
+                    )
 
 
 def build_data_dir(
@@ -329,3 +486,83 @@ def build_data_dir(
             )
 
     return res
+
+
+_TR_KEY_RE = re.compile(r"""\btr\(\s*(["'])([^"']+)\1""")
+
+
+@dataclass
+class ExtractResult:
+    csv_path: Path
+    scanned_files: int
+    found_keys: list[str] = field(default_factory=list)
+    added_keys: list[str] = field(default_factory=list)
+
+
+def extract_tr_keys(scan_roots: Sequence[Path]) -> tuple[set[str], int]:
+    """Collect string literals passed to ``tr()`` in ``.gd`` and ``.tscn`` files."""
+    keys: set[str] = set()
+    scanned = 0
+    for root in scan_roots:
+        path = root.expanduser().resolve()
+        if path.is_file():
+            candidates = [path]
+        elif path.is_dir():
+            candidates = [item for item in path.rglob("*") if item.suffix.lower() in {".gd", ".tscn"}]
+        else:
+            raise FileNotFoundError(f"Scan path not found: {path}")
+        for item in candidates:
+            if item.suffix.lower() not in {".gd", ".tscn"}:
+                continue
+            scanned += 1
+            text = item.read_text(encoding="utf-8", errors="replace")
+            for match in _TR_KEY_RE.finditer(text):
+                key = match.group(2).strip()
+                if key:
+                    keys.add(key)
+    return keys, scanned
+
+
+def merge_translation_keys(
+    csv_path: Path,
+    keys: set[str],
+    *,
+    locales: Sequence[str] = ("en", "zh"),
+) -> ExtractResult:
+    """Append missing keys to a localization CSV. Existing translations stay put.
+
+    New cells are left blank so ``gu data validate`` still reports them as untranslated.
+    """
+    dest = csv_path.expanduser().resolve()
+    result = ExtractResult(csv_path=dest, scanned_files=0, found_keys=sorted(keys))
+    existing_rows: list[dict[str, str]] = []
+    header: list[str]
+    if dest.is_file():
+        with dest.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if not reader.fieldnames or reader.fieldnames[0].strip() != "keys":
+                raise ValueError(f"{dest}: localization CSV first column must be 'keys'")
+            header = [col.strip() for col in reader.fieldnames]
+            for row in reader:
+                existing_rows.append({col: (row.get(col) or "") for col in header})
+    else:
+        locale_list = [loc.strip() for loc in locales if loc.strip()]
+        if not locale_list:
+            raise ValueError("At least one locale is required to create a localization CSV")
+        header = ["keys", *locale_list]
+
+    known = {str(row.get("keys", "")).strip() for row in existing_rows}
+    for key in sorted(keys):
+        if key in known:
+            continue
+        blank = {col: "" for col in header}
+        blank["keys"] = key
+        existing_rows.append(blank)
+        result.added_keys.append(key)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=header, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(existing_rows)
+    return result

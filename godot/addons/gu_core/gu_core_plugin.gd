@@ -12,6 +12,7 @@ const AUTOLOADS := {
 	"EventBus": "res://addons/gu_core/events/event_bus.gd",
 	"PoolService": "res://addons/gu_core/pool/pool_service.gd",
 	"DevConsole": "res://addons/gu_core/debug/dev_console.gd",
+	"PlatformService": "res://addons/gu_core/platform/platform_service.gd",
 }
 
 const BUS_LAYOUT_PATH := "res://addons/gu_core/audio/default_bus_layout.tres"

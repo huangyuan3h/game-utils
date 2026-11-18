@@ -85,6 +85,37 @@ def _run_cmd(cmd: list[str], cwd: Path | None = None) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
+def run_godot_tests(
+    project_dir: Path | None = None,
+    *,
+    godot_bin: str | None = None,
+    skip_godot: bool = False,
+) -> CheckReport:
+    """Headless import plus `tests/test_runner.gd`, including the play-flow smoke."""
+    proj = (project_dir or DEFAULT_GODOT_PROJECT_DIR).expanduser().resolve()
+    report = CheckReport(project_dir=proj)
+    if skip_godot:
+        report.steps.append(CheckStep("godot-tests", True, "skipped"))
+        return report
+
+    godot = find_godot_binary(godot_bin)
+    if not godot:
+        report.steps.append(CheckStep("godot-binary", False, "Godot binary not found (set --godot or GODOT_BIN)"))
+        return report
+
+    imp_code, imp_out = _run_cmd([godot, "--headless", "--path", str(proj), "--import", "--quit-after", "3"])
+    report.steps.append(CheckStep("godot-import", imp_code == 0 and "SCRIPT ERROR" not in imp_out, f"exit={imp_code}"))
+
+    test_script = proj / "tests" / "test_runner.gd"
+    if not test_script.is_file():
+        report.steps.append(CheckStep("godot-tests", False, f"missing {test_script}"))
+        return report
+    t_code, t_out = _run_cmd([godot, "--headless", "--path", str(proj), "--script", "res://tests/test_runner.gd"])
+    summary = next((ln for ln in t_out.splitlines() if "[PASS]" in ln or "[FAIL]" in ln), f"exit={t_code}")
+    report.steps.append(CheckStep("godot-tests", t_code == 0 and "[PASS]" in t_out and "SCRIPT ERROR" not in t_out, summary))
+    return report
+
+
 def run_project_check(
     project_dir: Path | None = None,
     *,
