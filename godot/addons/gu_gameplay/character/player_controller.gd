@@ -1,6 +1,7 @@
 extends CharacterBody3D
-## Player coordinator: reads input, steps CharacterActionController & CharacterLocomotion,
-## and drives Visual / Audio / Headlight.
+class_name GuPlayer
+## Shared player coordinator: reads input, steps CharacterActionController & CharacterLocomotion,
+## and drives Visual / Audio / Headlight. Art and audio paths are supplied by the owning scene.
 
 const ACTION_BINDINGS := {
 	"action_gather": &"gather",
@@ -10,6 +11,16 @@ const ACTION_BINDINGS := {
 }
 const STAMINA_MAX := 100.0
 const STAMINA_REGEN := 15.0
+
+@export_group("Character Assets")
+## Rigged model with Idle/Walk/Run/Working clips (FBX or glTF scene).
+@export_file("*.fbx", "*.glb", "*.tscn") var animated_model_path: String = ""
+## Static model used when no rigged model is configured.
+@export_file("*.glb", "*.tscn") var walker_model_path: String = ""
+## Second static model option, tried after `walker_model_path`.
+@export_file("*.glb", "*.tscn") var settler_model_path: String = ""
+## Looping water ambience played near open water. Leave empty to disable.
+@export_file("*.wav", "*.ogg") var water_loop_path: String = ""
 
 @onready var _visual_root: Node3D = $VisualRoot
 @onready var _label: Label3D = $NameLabel
@@ -44,12 +55,16 @@ func _ready() -> void:
 	_visual = CharacterVisual.new()
 	_visual.name = "VisualController"
 	add_child(_visual)
-	_visual.setup(_visual_root)
+	_visual.setup(_visual_root, {
+		"animated": animated_model_path,
+		"walker": walker_model_path,
+		"settler": settler_model_path,
+	})
 
 	_audio = CharacterAudio.new()
 	_audio.name = "AudioController"
 	add_child(_audio)
-	_audio.setup(_feet)
+	_audio.setup(_feet, water_loop_path)
 
 	_head_light = NightHeadlight.new()
 	add_child(_head_light)

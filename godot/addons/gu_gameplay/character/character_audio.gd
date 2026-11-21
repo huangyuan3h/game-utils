@@ -11,6 +11,7 @@ const WATER_VOL_DB := -22.0
 var surface_bank: SurfaceAudioBank = null
 var current_surface: int = SurfaceResolver.SurfaceType.GRASS
 var snow_cover: float = 0.0
+var _water_loop_path: String = ""
 
 var _feet: AudioStreamPlayer3D = null
 var _action_player: AudioStreamPlayer3D = null
@@ -35,9 +36,10 @@ func _exit_tree() -> void:
 		_action_player.stream = null
 
 
-func setup(feet_player: AudioStreamPlayer3D) -> void:
+func setup(feet_player: AudioStreamPlayer3D, water_loop_path: String = "") -> void:
 	_rng.randomize()
 	_feet = feet_player
+	_water_loop_path = water_loop_path
 	_ensure_surface_bank()
 	if _feet != null:
 		_feet.bus = &"SFX"
@@ -138,8 +140,8 @@ func _setup_water_ambience() -> void:
 	_water_amb.bus = &"Ambience"
 	_water_amb.volume_db = -80.0
 	add_child(_water_amb)
-	var path := "res://assets/sfx/water_flow_loop.wav"
-	if not ResourceLoader.exists(path):
+	var path := _water_loop_path
+	if path == "" or not ResourceLoader.exists(path):
 		return
 	var stream := load(path) as AudioStream
 	if stream == null:

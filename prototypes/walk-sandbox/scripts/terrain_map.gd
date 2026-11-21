@@ -124,6 +124,11 @@ func sample_biome(x: float, z: float) -> int:
 	return _data.sample_biome(x, z) if _data != null else MapGen.Biome.GRASS
 
 
+func is_open_water(x: float, z: float) -> bool:
+	var biome := sample_biome(x, z)
+	return biome == MapGen.Biome.SEA or biome == MapGen.Biome.LAKE
+
+
 func sample_water_surface(x: float, z: float) -> float:
 	return _data.sample_water_surface(x, z) if _data != null else -INF
 

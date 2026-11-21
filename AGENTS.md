@@ -24,7 +24,7 @@ Direct equivalent, from `shell/`: `uv run gu <same args>`.
 |------|------|--------|
 | `godot/addons/gu_core/` | Shared runtime plugin. Source of truth. | Yes |
 | `godot/addons/gu_gameplay/` | Shared gameplay classes. Source of truth. No autoloads. | Yes |
-| `godot/templates/starter/` | Files copied by `gu init` into a new game. | Yes, when the scaffold should change |
+| `godot/templates/starter/` | Files copied by `gu init` into a new game. Playable plane: `GuPlayer` + `CameraRig` wired to `GameFlow`. | Yes, when the scaffold should change |
 | `prototypes/walk-sandbox/` | Reference 3D game and the default test target. | Yes, for game-specific behavior |
 | `prototypes/walk-sandbox/addons/` | Generated copy of `godot/addons/`. | No. Sync it. |
 | `shell/src/game_utils_audio/` | Python CLI package. Name is historical; the command is `gu`. | Yes |
@@ -54,6 +54,7 @@ Engine: Godot 4.6, Forward Plus. Binary resolution (`find_godot_binary`): `--god
 | Events / pools / debug | `events/event_bus.gd`, `pool/pool_service.gd`, `debug/dev_console.gd`, `debug/gu_log.gd` | Bus, node pool, backtick console |
 | Data | `gu_core/data/data_table_loader.gd`, `gu_core/i18n/translation_catalog.gd` | JSON tables and CSV locales |
 | Interaction | `gu_gameplay/interaction/` | `Interactable`, `Interactor` |
+| Character | `gu_gameplay/character/` | `GuPlayer`, locomotion, IK, tools, character audio. Art/audio paths are injected by the scene |
 | Camera / actions | `camera/camera_rig.gd`, `actions/character_action_*.gd` | Follow camera, Gather/Mine/Chop/Build |
 | Surface audio | `audio/surface_resolver.gd`, `surface_audio_bank.gd` | Footstep surface → clip |
 | Stats / inventory | `stats/stat_set.gd`, `inventory/` | Stats, items, container |
@@ -70,11 +71,10 @@ Engine: Godot 4.6, Forward Plus. Binary resolution (`find_godot_binary`): `--god
 
 `main.gd` is the world coordinator: terrain, sky/weather, player, camera rig, title/pause/settings, quests, dialogue, saves. It calls `GameFlow.register_world` and `GameFlow.enter_title`.
 
-Game-only code lives under `prototypes/walk-sandbox/scripts/`, not in the addons:
+Game-specific code lives under `prototypes/walk-sandbox/scripts/`, not in the addons (the shared character stack lives in `gu_gameplay/character/`):
 
 | Dir | Owns |
 |-----|------|
-| `scripts/player.gd`, `scripts/character/` | Locomotion, IK, tools, character audio |
 | `scripts/map/`, `scripts/terrain/`, `scripts/map_generator.gd`, `scripts/terrain_map.gd` | Procedural heightfield, rivers, lakes, landforms, meshes |
 | `scripts/world/` | Beacon, spawner, dev-console world commands |
 | `scripts/ui/` | Title, pause, settings, debug overlay |

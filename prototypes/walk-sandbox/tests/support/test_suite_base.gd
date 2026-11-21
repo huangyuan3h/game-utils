@@ -64,6 +64,9 @@ class MockTerrain extends RefCounted:
 	func sample_biome(_x: float, _z: float) -> int:
 		return biome
 
+	func is_open_water(_x: float, _z: float) -> bool:
+		return biome == MapTypes.Biome.SEA or biome == MapTypes.Biome.LAKE
+
 
 class MockWorld extends Node:
 	var started_count: int = 0

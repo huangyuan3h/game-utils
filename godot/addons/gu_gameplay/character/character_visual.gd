@@ -4,9 +4,10 @@ extends Node
 ## SwimIKSolver, ClimbIKSolver, WorkIKSolver, and HandToolVisual.
 
 const MODEL_SCALE := 0.30
-const ANIMATED_PATH := "res://assets/models/quaternius/AnimatedHuman.fbx"
-const WALKER_PATH := "res://assets/models/walker.glb"
-const SETTLER_PATH := "res://assets/models/settler.glb"
+## Model paths come from the owning scene; the addon ships no art assets.
+var animated_path: String = ""
+var walker_path: String = ""
+var settler_path: String = ""
 
 const SWIM_PITCH := 1.38
 const SWIM_IDLE_PITCH := 0.74
@@ -32,8 +33,11 @@ var _tool_visual := HandToolVisual.new()
 var model_status_text: String = "Placeholder"
 
 
-func setup(visual_root: Node3D) -> void:
+func setup(visual_root: Node3D, model_paths: Dictionary = {}) -> void:
 	_visual_root = visual_root
+	animated_path = str(model_paths.get("animated", ""))
+	walker_path = str(model_paths.get("walker", ""))
+	settler_path = str(model_paths.get("settler", ""))
 	if _tool_visual.get_parent() != self:
 		_tool_visual.name = "HandToolVisual"
 		add_child(_tool_visual)
@@ -153,8 +157,8 @@ func _load_model() -> void:
 	_current_clip = ""
 	_tool_visual.cleanup()
 
-	if ResourceLoader.exists(ANIMATED_PATH):
-		var packed := load(ANIMATED_PATH) as PackedScene
+	if animated_path != "" and ResourceLoader.exists(animated_path):
+		var packed := load(animated_path) as PackedScene
 		if packed != null:
 			var model := packed.instantiate() as Node3D
 			_visual_root.add_child(model)
@@ -171,10 +175,10 @@ func _load_model() -> void:
 				return
 
 	var fallback: PackedScene = null
-	if ResourceLoader.exists(WALKER_PATH):
-		fallback = load(WALKER_PATH) as PackedScene
-	elif ResourceLoader.exists(SETTLER_PATH):
-		fallback = load(SETTLER_PATH) as PackedScene
+	if walker_path != "" and ResourceLoader.exists(walker_path):
+		fallback = load(walker_path) as PackedScene
+	elif settler_path != "" and ResourceLoader.exists(settler_path):
+		fallback = load(settler_path) as PackedScene
 	if fallback != null:
 		var model := fallback.instantiate() as Node3D
 		_visual_root.add_child(model)

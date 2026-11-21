@@ -1,7 +1,7 @@
 [gd_scene load_steps=9 format=3 uid="uid://bp3c3rr5u5bwy"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
-[ext_resource type="Script" path="res://scripts/player.gd" id="2_player"]
+[ext_resource type="Script" path="res://addons/gu_gameplay/character/player_controller.gd" id="2_player"]
 [ext_resource type="PackedScene" path="res://scenes/sky_time.tscn" id="3_sky"]
 [ext_resource type="PackedScene" path="res://scenes/terrain_map.tscn" id="4_terrain"]
 [ext_resource type="Script" path="res://addons/gu_gameplay/camera/camera_rig.gd" id="5_camera_rig"]
@@ -42,6 +42,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 floor_stop_on_slope = true
 floor_max_angle = 0.9
 script = ExtResource("2_player")
+animated_model_path = "res://assets/models/quaternius/AnimatedHuman.fbx"
+walker_model_path = "res://assets/models/walker.glb"
+settler_model_path = "res://assets/models/settler.glb"
+water_loop_path = "res://assets/sfx/water_flow_loop.wav"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)

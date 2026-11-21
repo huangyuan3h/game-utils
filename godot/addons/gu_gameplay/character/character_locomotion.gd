@@ -1,9 +1,7 @@
 class_name CharacterLocomotion
 extends RefCounted
 ## Pure 8-direction ground + climb + wade/swim locomotion state machine.
-## Depends only on a terrain query interface (sample_height, sample_water_surface, sample_biome).
-
-const MapGen = preload("res://scripts/map_generator.gd")
+## Depends only on a terrain query interface (sample_height, sample_water_surface, is_open_water).
 
 const WALK_SPEED := 3.2
 const RUN_SPEED := 6.4
@@ -244,8 +242,7 @@ func _open_water_depth(x: float, z: float, terrain: Object) -> float:
 	var surface := _water_surface_y(x, z, terrain)
 	if surface <= -1000.0:
 		return 0.0
-	var biome := _biome_at(x, z, terrain)
-	if biome != MapGen.Biome.SEA and biome != MapGen.Biome.LAKE:
+	if not _is_open_water(x, z, terrain):
 		return 0.0
 	return maxf(0.0, surface - _ground_y(x, z, terrain))
 
@@ -272,3 +269,11 @@ func _biome_at(x: float, z: float, terrain: Object) -> int:
 	if terrain != null and terrain.has_method("sample_biome"):
 		return int(terrain.call("sample_biome", x, z))
 	return -1
+
+
+func _is_open_water(x: float, z: float, terrain: Object) -> bool:
+	## Rivers stay wadeable; only sea/lake surfaces count as open water.
+	## Terrains that do not distinguish water types treat every surface as open water.
+	if terrain != null and terrain.has_method("is_open_water"):
+		return bool(terrain.call("is_open_water", x, z))
+	return true

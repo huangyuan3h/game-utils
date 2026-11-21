@@ -72,6 +72,23 @@ func _run_all() -> void:
 	var ctrl := CharacterActionController.new()
 	_assert(ctrl.try_start(&"gather", {"swim_amt": 0.0}), "CharacterActionController works in starter without CharacterLocomotion")
 
+	var packed_scene := load("res://scenes/main.tscn") as PackedScene
+	_assert(packed_scene != null, "Starter main scene loads")
+	if packed_scene != null:
+		var scene := packed_scene.instantiate()
+		var player := scene.get_node_or_null("Player")
+		_assert(player is GuPlayer, "Starter main scene contains a GuPlayer")
+		_assert(scene.get_node_or_null("CameraPivot") != null, "Starter main scene contains a camera rig")
+		var boot_probe := scene.get_node_or_null("Player") as GuPlayer
+		if boot_probe != null:
+			scene.remove_child(boot_probe)
+			get_root().add_child(boot_probe)
+			_assert(boot_probe.get_locomotion() != null, "GuPlayer boots its locomotion state")
+			_assert(InputMap.has_action("move_forward"), "GuPlayer registers movement actions")
+			get_root().remove_child(boot_probe)
+			boot_probe.free()
+		scene.free()
+
 	var stats := StatSet.new()
 	stats.define_stat(&"hp", 100.0)
 	_assert(stats.spend(&"hp", 25.0) and is_equal_approx(stats.get_value(&"hp"), 75.0), "StatSet works in starter")
