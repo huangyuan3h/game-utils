@@ -30,4 +30,6 @@ From the repository root:
 ./start.sh play
 # headless quality gate (addon parity, pytest, Godot tests, smoke):
 ./start.sh check
+# packaged build (install the matching Godot export templates first):
+./start.sh export --preset macOS --out build/walk-sandbox.zip
 ```

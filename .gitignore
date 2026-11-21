@@ -15,6 +15,9 @@ shell/.venv/
 # Generated assets
 output/
 
+# Export artifacts
+build/
+
 # User-downloaded packs waiting to import
 library/sfx/incoming/*
 !library/sfx/incoming/.gitkeep

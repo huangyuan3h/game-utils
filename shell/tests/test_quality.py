@@ -7,12 +7,17 @@ from pathlib import Path
 import pytest
 
 from game_utils_audio import cli
+from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR
 from game_utils_audio.quality import (
     check_addons_parity,
     export_godot_project,
     parse_export_presets,
     run_project_check,
 )
+
+
+def test_walk_sandbox_ships_export_presets() -> None:
+    assert parse_export_presets(DEFAULT_GODOT_PROJECT_DIR) == ["macOS", "Linux"]
 
 
 def test_addons_parity_matches_walk_sandbox() -> None:

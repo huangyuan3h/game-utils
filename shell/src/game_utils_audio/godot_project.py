@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +37,14 @@ class InitProjectResult:
     dry_run: bool
     created_files: list[str] = field(default_factory=list)
     addon_sync: AddonSyncResult | None = None
+
+
+def _render_template(text: str, project_name: str) -> str:
+    """Fill template placeholders shared by project and export preset files."""
+    slug = re.sub(r"[^a-z0-9]+", "_", project_name.strip().lower()).strip("_")
+    return text.replace("{{PROJECT_NAME}}", project_name).replace(
+        "{{BUNDLE_ID}}", f"com.example.{slug or 'game'}"
+    )
 
 
 def _should_skip_source(path: Path) -> bool:
@@ -149,9 +158,9 @@ def init_godot_project(
         if not src_file.is_file() or _should_skip_source(src_file):
             continue
         rel = src_file.relative_to(tpl_root)
-        if src_file.name == "project.godot.tmpl":
-            dest_rel = rel.with_name("project.godot")
-            rendered = src_file.read_text(encoding="utf-8").replace("{{PROJECT_NAME}}", project_name)
+        if src_file.name.endswith(".tmpl"):
+            dest_rel = rel.with_suffix("")
+            rendered = _render_template(src_file.read_text(encoding="utf-8"), project_name)
             result.created_files.append(dest_rel.as_posix())
             if not dry_run:
                 out_path = dest_dir / dest_rel

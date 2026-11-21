@@ -23,6 +23,11 @@ jobs:
       - name: Verify shared addons parity
         working-directory: shell
         run: uv run gu check --skip-pytest --skip-godot
+      - name: Verify export presets parse
+        working-directory: shell
+        run: |
+          uv run gu export --preset macOS --out build/walk-sandbox.zip --dry-run
+          uv run gu export --preset Linux --out build/walk-sandbox.x86_64 --dry-run
       - name: Smoke check asset sync and audit
         working-directory: shell
         run: |

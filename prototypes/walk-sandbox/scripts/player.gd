@@ -39,6 +39,7 @@ func _ready() -> void:
 	var save_svc := get_node_or_null("/root/SaveService")
 	if save_svc != null and save_svc.has_method("register_saveable"):
 		save_svc.call("register_saveable", "inventory", _inventory)
+		save_svc.call("register_saveable", "player_stats", _stats)
 
 	_visual = CharacterVisual.new()
 	_visual.name = "VisualController"
@@ -69,6 +70,7 @@ func _exit_tree() -> void:
 	var save_svc := get_node_or_null("/root/SaveService")
 	if save_svc != null and save_svc.has_method("unregister_saveable"):
 		save_svc.call("unregister_saveable", "inventory")
+		save_svc.call("unregister_saveable", "player_stats")
 
 
 func set_context(p_terrain: Node, p_sky_time: Node) -> void:

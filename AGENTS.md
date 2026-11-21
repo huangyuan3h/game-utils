@@ -80,7 +80,7 @@ Game-only code lives under `prototypes/walk-sandbox/scripts/`, not in the addons
 | `scripts/ui/` | Title, pause, settings, debug overlay |
 | `scripts/sky_time.gd`, `weather_*.gd` | Time of day, weather, lightning |
 
-Controls are documented in `prototypes/walk-sandbox/README.md`. Headless gameplay tests: `prototypes/walk-sandbox/tests/test_runner.gd` (run by `gu check`, not by `gu play`).
+Controls are documented in `prototypes/walk-sandbox/README.md`. Headless gameplay tests: `prototypes/walk-sandbox/tests/test_runner.gd` (run by `gu check`, not by `gu play`). The runner orders suites from `tests/suites/`; shared fixtures live in `tests/support/test_suite_base.gd`. Add new assertions to the matching suite, not to the runner.
 
 `./start.sh play` resolves that project, runs a best-effort headless `--import`, then replaces the process with Godot `--path` (the game). `--editor` opens the editor. Implementation: `shell/src/game_utils_audio/play.py`.
 
@@ -102,7 +102,7 @@ Package: `shell/src/game_utils_audio/`. Console script: `gu` only. Entry: `cli.p
 | `assets audit` / `assets credits` | `assets_audit.py` | License scan, `CREDITS.md` |
 | `data validate` / `data build` | `data_pipeline.py` | CSV/JSON tables and `*_i18n.csv`. Schema `refs` catch orphan ids, `i18n` columns must exist as translation keys, and `{token}` sets must match across locales. Build writes JSON, `i18n_manifest.json`, and a keep `.import` beside each localization CSV. Locale columns are the languages Settings shows |
 | `check` | `quality.py` | Addon parity, pytest, Godot import, `tests/test_runner.gd`, 30-frame smoke |
-| `export` | `quality.py` | Headless export from `export_presets.cfg` |
+| `export` | `quality.py` | Headless export from `export_presets.cfg` (`--preset macOS` or `--preset Linux` in Walk Sandbox) |
 
 Paths (`paths.py`): repo root is two parents above the package file. Default Godot project is `prototypes/walk-sandbox`. Audio output is `output/sfx` and `output/bgm`.
 

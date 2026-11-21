@@ -30,6 +30,11 @@ def mock_godot_repo(tmp_path: Path) -> dict[str, Path]:
         '[application]\nconfig/name="{{PROJECT_NAME}}"\n',
         encoding="utf-8",
     )
+    (tpl_dir / "export_presets.cfg.tmpl").write_text(
+        '[preset.0]\nname="macOS"\n\n[preset.0.options]\n'
+        'application/bundle_identifier="{{BUNDLE_ID}}"\n',
+        encoding="utf-8",
+    )
     (tpl_dir / "scenes" / "main.tscn").write_text("[gd_scene format=3]\n", encoding="utf-8")
     (tpl_dir / "scripts" / "main.gd").write_text("extends Node3D\n", encoding="utf-8")
 
@@ -86,6 +91,10 @@ def test_init_godot_project_scaffolds_starter_and_protects_existing(mock_godot_r
     assert res.project_name == "Star Odyssey"
     assert (target / "project.godot").is_file()
     assert 'config/name="Star Odyssey"' in (target / "project.godot").read_text(encoding="utf-8")
+    assert (target / "export_presets.cfg").is_file()
+    presets_text = (target / "export_presets.cfg").read_text(encoding="utf-8")
+    assert 'application/bundle_identifier="com.example.star_odyssey"' in presets_text
+    assert "{{BUNDLE_ID}}" not in presets_text
     assert (target / "scenes" / "main.tscn").is_file()
     assert (target / "addons" / "gu_core" / "core.gd").is_file()
     assert (target / "addons" / "gu_gameplay" / "actor.gd").is_file()
