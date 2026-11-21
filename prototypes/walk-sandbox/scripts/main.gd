@@ -59,6 +59,7 @@ func _ready() -> void:
 		_terrain.connect("generation_finished", Callable(self, "_on_terrain_generation_finished"))
 
 	_place_player_on_terrain()
+	_register_content()
 	_rebuild_world_entities()
 	_refresh_interaction_prompt()
 	_refresh_overlay()
@@ -184,16 +185,19 @@ func _register_ui_screens() -> void:
 
 
 func _setup_quests() -> void:
-	_quests.register_quest(WorldSpawner.create_beacon_quest())
-	_quests.register_quest(WorldSpawner.create_gather_wood_quest())
+	var quest_defs := GameContent.quests()
+	for quest_def in quest_defs:
+		_quests.register_quest(quest_def)
 	_quests.bind(get_node_or_null("/root/EventBus"), _flags, _player_inventory())
-	_quests.start_quest(&"activate_beacons")
+	for quest_def in quest_defs:
+		if quest_def.auto_start:
+			_quests.start_quest(quest_def.id)
 	_quests.quest_completed.connect(func(qid: StringName) -> void:
 		GuLog.info("Quests", "Completed quest: %s" % String(qid))
 		var ui := get_node_or_null("/root/UIRouter")
 		var flow := get_node_or_null("/root/GameFlow")
 		if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
-			var title := str(_quests.get_quest_status(qid).get("title", String(qid)))
+			var title := tr(str(_quests.get_quest_status(qid).get("title", String(qid))))
 			if title == "":
 				title = String(qid)
 			ui.call("show_toast", "QUEST COMPLETE: %s" % title, 3.0, &"success")
@@ -243,10 +247,19 @@ func _rebuild_world_entities() -> void:
 		_terrain,
 		_player.global_position,
 		_pending_resource_states,
-		_resource_nodes
+		_resource_nodes,
+		GameContent.resource_specs()
 	)
 	_pending_resource_states.clear()
-	WorldSpawner.spawn_elder(_markers_root, _terrain, _player.global_position)
+	WorldSpawner.spawn_elder(_markers_root, _terrain, _player.global_position, GameContent.dialogue(&"elder_intro"))
+
+
+func _register_content() -> void:
+	var inv := _player_inventory()
+	if inv == null:
+		return
+	for item_def in GameContent.items():
+		inv.register_item(item_def)
 
 
 func _setup_dialogue() -> void:
@@ -299,7 +312,7 @@ func _refresh_interaction_prompt() -> void:
 	if target == null or not is_instance_valid(target) or not gameplay_ok:
 		_prompt_panel.visible = false
 		return
-	_prompt_label.text = "[E] %s" % target.get_prompt_text()
+	_prompt_label.text = "[E] %s" % tr(target.get_prompt_text())
 	_prompt_panel.visible = true
 
 

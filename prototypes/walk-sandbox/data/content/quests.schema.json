@@ -1,0 +1,5 @@
+{
+  "required": ["id", "title", "objectives"],
+  "types": { "id": "string", "title": "string" },
+  "unique": ["id"]
+}

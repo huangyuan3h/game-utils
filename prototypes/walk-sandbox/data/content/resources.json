@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "table": "resources",
+  "rows": [
+    {
+      "id": "res_ore_1",
+      "kind": "ore",
+      "action": "mine",
+      "offset": [4.2, 2.4],
+      "color": [0.35, 0.78, 0.98],
+      "yields": [{ "item_id": "ore", "min": 1, "max": 2, "chance": 1.0 }],
+      "max_hp": 30.0,
+      "hit_damage": 10.0,
+      "respawn_time": 20.0
+    },
+    {
+      "id": "res_ore_2",
+      "kind": "ore",
+      "action": "mine",
+      "offset": [-4.5, 2.8],
+      "color": [0.95, 0.74, 0.3],
+      "yields": [{ "item_id": "ore", "min": 1, "max": 2, "chance": 1.0 }],
+      "max_hp": 30.0,
+      "hit_damage": 10.0,
+      "respawn_time": 20.0
+    },
+    {
+      "id": "res_wood_1",
+      "kind": "wood",
+      "action": "chop",
+      "offset": [3.6, -4.4],
+      "color": [0.28, 0.72, 0.34],
+      "yields": [{ "item_id": "wood", "min": 1, "max": 2, "chance": 1.0 }],
+      "max_hp": 30.0,
+      "hit_damage": 10.0,
+      "respawn_time": 20.0
+    },
+    {
+      "id": "res_wood_2",
+      "kind": "wood",
+      "action": "chop",
+      "offset": [-3.8, -4.2],
+      "color": [0.34, 0.78, 0.42],
+      "yields": [{ "item_id": "wood", "min": 1, "max": 2, "chance": 1.0 }],
+      "max_hp": 30.0,
+      "hit_damage": 10.0,
+      "respawn_time": 20.0
+    }
+  ]
+}

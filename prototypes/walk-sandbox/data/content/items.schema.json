@@ -1,0 +1,5 @@
+{
+  "required": ["id", "display_name"],
+  "types": { "id": "string", "display_name": "string", "max_stack": "int" },
+  "unique": ["id"]
+}

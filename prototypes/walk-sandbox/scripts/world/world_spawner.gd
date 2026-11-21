@@ -63,7 +63,8 @@ static func spawn_resource_nodes(
 	terrain: Node,
 	center: Vector3,
 	pending_states: Dictionary,
-	prev_nodes: Array[ResourceNode]
+	prev_nodes: Array[ResourceNode],
+	specs: Array[Dictionary] = []
 ) -> Array[ResourceNode]:
 	for rn in prev_nodes:
 		if is_instance_valid(rn):
@@ -74,13 +75,8 @@ static func spawn_resource_nodes(
 	var spawned: Array[ResourceNode] = []
 	if markers_root == null:
 		return spawned
-
-	var specs := [
-		{"id": "res_ore_1", "kind": &"ore", "action": &"mine", "offset": Vector2(4.2, 2.4), "color": Color(0.35, 0.78, 0.98)},
-		{"id": "res_ore_2", "kind": &"ore", "action": &"mine", "offset": Vector2(-4.5, 2.8), "color": Color(0.95, 0.74, 0.30)},
-		{"id": "res_wood_1", "kind": &"wood", "action": &"chop", "offset": Vector2(3.6, -4.4), "color": Color(0.28, 0.72, 0.34)},
-		{"id": "res_wood_2", "kind": &"wood", "action": &"chop", "offset": Vector2(-3.8, -4.2), "color": Color(0.34, 0.78, 0.42)},
-	]
+	if specs.is_empty():
+		specs = GameContent.resource_specs()
 	var data: MapData = terrain.call("get_map_data") as MapData if (terrain != null and terrain.has_method("get_map_data")) else null
 	var map_half := (data.size * 0.5 - 4.0) if data != null else 52.0
 
@@ -94,17 +90,22 @@ static func spawn_resource_nodes(
 		var wy := float(terrain.call("sample_height", wx, wz)) if (terrain != null and terrain.has_method("sample_height")) else 0.0
 
 		var node := ResourceNode.new()
-		var rkind := sp["kind"] as StringName
+		var yields_list: Array[Dictionary] = []
+		var raw_yields: Variant = sp.get("yields", [])
+		if raw_yields is Array:
+			for entry in raw_yields as Array:
+				if entry is Dictionary:
+					yields_list.append((entry as Dictionary).duplicate(true))
 		node.configure(
 			str(sp["id"]),
-			rkind,
+			sp["kind"] as StringName,
 			sp["action"] as StringName,
-			[{"item_id": String(rkind), "min": 1, "max": 2, "chance": 1.0}],
-			30.0,
-			10.0,
+			yields_list,
+			float(sp.get("max_hp", 30.0)),
+			float(sp.get("hit_damage", 10.0)),
 			sp["color"] as Color
 		)
-		node.respawn_time = 20.0
+		node.respawn_time = float(sp.get("respawn_time", 20.0))
 		node.position = Vector3(wx, wy, wz)
 		if pending_states.has(node.interaction_id):
 			node.apply_state(pending_states[node.interaction_id] as Dictionary)
@@ -130,102 +131,12 @@ static func export_resources_state(nodes: Array[ResourceNode]) -> Dictionary:
 	return out
 
 
-static func create_gather_wood_quest() -> QuestDef:
-	return QuestDef.from_dict({
-		"id": "gather_wood",
-		"title": "Timber for the Ward",
-		"description": "Bring 3 wood to the elder.",
-		"objectives": [
-			{
-				"id": "deliver",
-				"description": "Deliver 3 wood",
-				"type": "event",
-				"event": "wood_delivered",
-				"target": 1,
-			},
-		],
-		"rewards": [
-			{"type": "item", "id": "coin", "amount": 8},
-			{"type": "flag", "id": "elder_paid", "value": true},
-		],
-	})
-
-
-static func create_elder_dialogue() -> DialogueDef:
-	return DialogueDef.from_dict({
-		"id": "elder_intro",
-		"start": "greet",
-		"nodes": [
-			{
-				"id": "greet",
-				"speaker": "Elder",
-				"text": "The beacon ward needs timber.",
-				"branches": [
-					{
-						"conditions": [
-							{"type": "quest", "id": "gather_wood", "state": "completed"},
-						],
-						"next": "done",
-					},
-				],
-				"choices": [
-					{
-						"text": "I will bring three wood.",
-						"next": "accepted",
-						"conditions": [
-							{"type": "quest", "id": "gather_wood", "state": "inactive"},
-						],
-						"effects": [
-							{"type": "start_quest", "id": "gather_wood"},
-							{"type": "set_flag", "id": "met_elder", "value": true},
-						],
-					},
-					{
-						"text": "Here is the wood.",
-						"next": "paid",
-						"conditions": [
-							{"type": "quest", "id": "gather_wood", "state": "active"},
-							{"type": "item", "id": "wood", "amount": 3},
-						],
-						"effects": [
-							{"type": "remove_item", "id": "wood", "amount": 3},
-							{"type": "emit_event", "event": "wood_delivered"},
-						],
-					},
-					{
-						"text": "I will return later.",
-						"next": "later",
-						"conditions": [
-							{"type": "quest", "id": "gather_wood", "state": "not_completed"},
-						],
-					},
-				],
-			},
-			{
-				"id": "accepted",
-				"speaker": "Elder",
-				"text": "Three timber beams will do. Fell the trees nearby.",
-			},
-			{
-				"id": "paid",
-				"speaker": "Elder",
-				"text": "The ward is steadier. Take this for your trouble.",
-			},
-			{
-				"id": "done",
-				"speaker": "Elder",
-				"text": "You already helped the ward.",
-			},
-			{
-				"id": "later",
-				"speaker": "Elder",
-				"text": "I will keep the watch.",
-			},
-		],
-	})
-
-
-static func spawn_elder(markers_root: Node3D, terrain: Node, center: Vector3) -> DialogueInteractable:
+static func spawn_elder(
+	markers_root: Node3D,
+	terrain: Node,
+	center: Vector3,
+	dialogue: DialogueDef = null
+) -> DialogueInteractable:
 	if markers_root == null:
 		return null
 	for child in markers_root.get_children():
@@ -240,7 +151,7 @@ static func spawn_elder(markers_root: Node3D, terrain: Node, center: Vector3) ->
 	elder.interaction_id = "elder"
 	elder.interaction_priority = 5
 	elder.interaction_radius = 2.4
-	elder.dialogue = create_elder_dialogue()
+	elder.dialogue = dialogue if dialogue != null else GameContent.dialogue(&"elder_intro")
 
 	var offset := Vector2(2.4, 1.6)
 	var data: MapData = terrain.call("get_map_data") as MapData if (terrain != null and terrain.has_method("get_map_data")) else null
@@ -257,24 +168,3 @@ static func spawn_elder(markers_root: Node3D, terrain: Node, center: Vector3) ->
 	markers_root.add_child(elder)
 	elder.position = Vector3(wx, wy, wz)
 	return elder
-
-
-static func create_beacon_quest() -> QuestDef:
-	return QuestDef.from_dict({
-		"id": "activate_beacons",
-		"title": "Activate Sector Beacons",
-		"description": "Light 3 world beacons to stabilize the sector.",
-		"objectives": [
-			{
-				"id": "light_3",
-				"description": "Light 3 beacons",
-				"type": "event",
-				"event": "beacon_lit_changed",
-				"filter": {"lit": true},
-				"target": 3,
-			},
-		],
-		"rewards": [
-			{"type": "flag", "id": "sector_linked", "value": true},
-		],
-	})

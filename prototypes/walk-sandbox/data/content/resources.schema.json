@@ -1,0 +1,5 @@
+{
+  "required": ["id", "kind", "action"],
+  "types": { "id": "string", "kind": "string", "action": "string", "max_hp": "float" },
+  "unique": ["id"]
+}

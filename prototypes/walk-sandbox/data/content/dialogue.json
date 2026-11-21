@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "table": "dialogue",
+  "rows": [
+    {
+      "id": "elder_intro",
+      "start": "greet",
+      "nodes": [
+        {
+          "id": "greet",
+          "speaker": "Elder",
+          "text": "The beacon ward needs timber.",
+          "branches": [
+            {
+              "conditions": [
+                {
+                  "type": "quest",
+                  "id": "gather_wood",
+                  "state": "completed"
+                }
+              ],
+              "next": "done"
+            }
+          ],
+          "choices": [
+            {
+              "text": "I will bring three wood.",
+              "next": "accepted",
+              "conditions": [
+                {
+                  "type": "quest",
+                  "id": "gather_wood",
+                  "state": "inactive"
+                }
+              ],
+              "effects": [
+                {
+                  "type": "start_quest",
+                  "id": "gather_wood"
+                },
+                {
+                  "type": "set_flag",
+                  "id": "met_elder",
+                  "value": true
+                }
+              ]
+            },
+            {
+              "text": "Here is the wood.",
+              "next": "paid",
+              "conditions": [
+                {
+                  "type": "quest",
+                  "id": "gather_wood",
+                  "state": "active"
+                },
+                {
+                  "type": "item",
+                  "id": "wood",
+                  "amount": 3
+                }
+              ],
+              "effects": [
+                {
+                  "type": "remove_item",
+                  "id": "wood",
+                  "amount": 3
+                },
+                {
+                  "type": "emit_event",
+                  "event": "wood_delivered"
+                }
+              ]
+            },
+            {
+              "text": "I will return later.",
+              "next": "later",
+              "conditions": [
+                {
+                  "type": "quest",
+                  "id": "gather_wood",
+                  "state": "not_completed"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "accepted",
+          "speaker": "Elder",
+          "text": "Three timber beams will do. Fell the trees nearby."
+        },
+        {
+          "id": "paid",
+          "speaker": "Elder",
+          "text": "The ward is steadier. Take this for your trouble."
+        },
+        {
+          "id": "done",
+          "speaker": "Elder",
+          "text": "You already helped the ward."
+        },
+        {
+          "id": "later",
+          "speaker": "Elder",
+          "text": "I will keep the watch."
+        }
+      ]
+    }
+  ]
+}

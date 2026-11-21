@@ -1,0 +1,5 @@
+{
+  "required": ["id", "start", "nodes"],
+  "types": { "id": "string", "start": "string" },
+  "unique": ["id"]
+}

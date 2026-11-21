@@ -144,8 +144,8 @@ func _ensure_ui() -> void:
 
 
 func _render(view: Dictionary) -> void:
-	_speaker_label.text = str(view.get("speaker", ""))
-	_body_label.text = str(view.get("text", ""))
+	_speaker_label.text = tr(str(view.get("speaker", "")))
+	_body_label.text = tr(str(view.get("text", "")))
 	var error := str(view.get("error", ""))
 	_error_label.text = _error_text(error)
 	_error_label.visible = _error_label.text != ""
@@ -157,13 +157,13 @@ func _render(view: Dictionary) -> void:
 			if not (raw is Dictionary):
 				continue
 			var choice := raw as Dictionary
-			var button := _make_button(str(choice.get("text", "")))
+			var button := _make_button(tr(str(choice.get("text", ""))))
 			var index := int(choice.get("index", -1))
 			button.pressed.connect(_on_choice_pressed.bind(index))
 			_choice_box.add_child(button)
 
 	if bool(view.get("can_continue", false)):
-		var cont := _make_button("Continue")
+		var cont := _make_button(tr("Continue"))
 		cont.name = "ContinueButton"
 		cont.pressed.connect(_on_continue_pressed)
 		_choice_box.add_child(cont)

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "table": "quests",
+  "rows": [
+    {
+      "id": "activate_beacons",
+      "title": "Activate Sector Beacons",
+      "description": "Light 3 world beacons to stabilize the sector.",
+      "auto_start": true,
+      "objectives": [
+        {
+          "id": "light_3",
+          "description": "Light 3 beacons",
+          "type": "event",
+          "event": "beacon_lit_changed",
+          "filter": {
+            "lit": true
+          },
+          "target": 3
+        }
+      ],
+      "rewards": [
+        {
+          "type": "flag",
+          "id": "sector_linked",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "gather_wood",
+      "title": "Timber for the Ward",
+      "description": "Bring 3 wood to the elder.",
+      "objectives": [
+        {
+          "id": "deliver",
+          "description": "Deliver 3 wood",
+          "type": "event",
+          "event": "wood_delivered",
+          "target": 1
+        }
+      ],
+      "rewards": [
+        {
+          "type": "item",
+          "id": "coin",
+          "amount": 8
+        },
+        {
+          "type": "flag",
+          "id": "elder_paid",
+          "value": true
+        }
+      ]
+    }
+  ]
+}

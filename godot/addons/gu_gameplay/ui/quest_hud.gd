@@ -86,7 +86,7 @@ func _render_active(quest_id: StringName) -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 1)
 	var title := Label.new()
-	title.text = String(status.get("title", quest_id))
+	title.text = tr(String(status.get("title", quest_id)))
 	title.add_theme_font_size_override("font_size", 15)
 	box.add_child(title)
 	var objectives: Array = status.get("objectives", []) as Array
@@ -94,7 +94,7 @@ func _render_active(quest_id: StringName) -> void:
 		var obj: Dictionary = obj_variant
 		var line := Label.new()
 		line.add_theme_font_size_override("font_size", 13)
-		line.text = "%s %d/%d" % [String(obj.get("description", "")), int(obj.get("current", 0)), int(obj.get("target", 0))]
+		line.text = "%s %d/%d" % [tr(String(obj.get("description", ""))), int(obj.get("current", 0)), int(obj.get("target", 0))]
 		box.add_child(line)
 	add_child(box)
 	_rows[quest_id] = {"node": box, "complete": false}
@@ -103,7 +103,7 @@ func _render_active(quest_id: StringName) -> void:
 func _render_complete(quest_id: StringName) -> void:
 	var status := _tracker.get_quest_status(quest_id)
 	var line := Label.new()
-	line.text = "%s  COMPLETE" % String(status.get("title", quest_id))
+	line.text = "%s  COMPLETE" % tr(String(status.get("title", quest_id)))
 	line.add_theme_color_override("font_color", Color(0.82, 0.82, 0.82))
 	add_child(line)
 	var timer := Timer.new()

@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from game_utils_audio.data_pipeline import validate_data_dir
 from game_utils_audio.godot_project import AddonSyncResult, sync_addons
 from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR, SHELL_ROOT
 
@@ -138,6 +139,20 @@ def run_project_check(
         code, out = _run_cmd([sys.executable, "-m", "pytest"], cwd=SHELL_ROOT)
         last_line = out.strip().splitlines()[-1] if out.strip() else f"exit={code}"
         report.steps.append(CheckStep("pytest", code == 0, last_line))
+
+    data_dir = proj / "data"
+    if data_dir.is_dir():
+        validation = validate_data_dir(data_dir)
+        if validation.ok:
+            report.steps.append(
+                CheckStep(
+                    "data-validate",
+                    True,
+                    f"{len(validation.tables)} table(s), {len(validation.localization_files)} localization file(s)",
+                )
+            )
+        else:
+            report.steps.append(CheckStep("data-validate", False, "; ".join(validation.errors[:3])))
 
     if not skip_godot:
         godot = find_godot_binary(godot_bin)

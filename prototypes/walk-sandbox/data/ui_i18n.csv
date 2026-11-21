@@ -60,3 +60,23 @@ SLOTS_OVERWRITE_BODY,Overwrite save slot '%s'?,覆盖存档「%s」？
 SLOTS_DELETE_TITLE,DELETE ARCHIVE,删除存档
 SLOTS_DELETE_BODY,Permanently delete save slot '%s'?,永久删除存档「%s」？
 SLOTS_CANCEL,CANCEL,取消
+Activate Sector Beacons,Activate Sector Beacons,激活区域信标
+Light 3 world beacons to stabilize the sector.,Light 3 world beacons to stabilize the sector.,点亮 3 座世界信标以稳定区域。
+Light 3 beacons,Light 3 beacons,点亮 3 座信标
+Timber for the Ward,Timber for the Ward,为结界筹备木料
+Bring 3 wood to the elder.,Bring 3 wood to the elder.,带 3 份木材给长老。
+Deliver 3 wood,Deliver 3 wood,交付 3 份木材
+Elder,Elder,长老
+The beacon ward needs timber.,The beacon ward needs timber.,信标的结界需要木料。
+I will bring three wood.,I will bring three wood.,我会带来三份木材。
+Here is the wood.,Here is the wood.,木材带来了。
+I will return later.,I will return later.,我稍后再来。
+Three timber beams will do. Fell the trees nearby.,Three timber beams will do. Fell the trees nearby.,三根木梁就够了。去砍附近的树。
+The ward is steadier. Take this for your trouble.,The ward is steadier. Take this for your trouble.,结界稳定了些。这是给你的报酬。
+You already helped the ward.,You already helped the ward.,你已经帮过结界了。
+I will keep the watch.,I will keep the watch.,我会继续守着。
+Continue,Continue,继续
+Speak with Elder,Speak with Elder,与长老交谈
+Wood,Wood,木材
+Ore,Ore,矿石
+Coin,Coin,金币

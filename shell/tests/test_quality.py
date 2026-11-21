@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from game_utils_audio import cli
+from game_utils_audio.data_pipeline import validate_data_dir
 from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR
 from game_utils_audio.quality import (
     check_addons_parity,
@@ -18,6 +19,13 @@ from game_utils_audio.quality import (
 
 def test_walk_sandbox_ships_export_presets() -> None:
     assert parse_export_presets(DEFAULT_GODOT_PROJECT_DIR) == ["macOS", "Linux"]
+
+
+def test_walk_sandbox_content_data_validates() -> None:
+    result = validate_data_dir(DEFAULT_GODOT_PROJECT_DIR / "data")
+    assert result.ok, result.errors
+    assert "content/quests.json" in result.tables
+    assert "content/dialogue.json" in result.tables
 
 
 def test_addons_parity_matches_walk_sandbox() -> None:

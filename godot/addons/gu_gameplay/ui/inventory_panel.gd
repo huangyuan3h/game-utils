@@ -160,6 +160,9 @@ func _has_key_event(key: Key) -> bool:
 
 
 func _pretty(item_id: StringName) -> String:
+	var def := _inventory.get_item_def(item_id) if _inventory != null else null
+	if def != null and def.display_name != "":
+		return tr(def.display_name)
 	var raw := String(item_id).replace("_", " ")
 	if raw.is_empty():
 		return raw

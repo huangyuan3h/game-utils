@@ -52,7 +52,7 @@ Engine: Godot 4.6, Forward Plus. Binary resolution (`find_godot_binary`): `--god
 | Save | `gu_core/save/save_service.gd` | Saveables, migrations, `.bak` |
 | Settings | `gu_core/settings/settings_store.gd` | Persisted settings, including locale |
 | Events / pools / debug | `events/event_bus.gd`, `pool/pool_service.gd`, `debug/dev_console.gd`, `debug/gu_log.gd` | Bus, node pool, backtick console |
-| Data | `gu_core/data/data_table_loader.gd`, `gu_core/i18n/translation_catalog.gd` | JSON tables and CSV locales |
+| Data | `gu_core/data/data_table_loader.gd`, `gu_core/data/content_database.gd`, `gu_core/i18n/translation_catalog.gd` | JSON tables, indexed content rows, CSV locales |
 | Interaction | `gu_gameplay/interaction/` | `Interactable`, `Interactor` |
 | Character | `gu_gameplay/character/` | `GuPlayer`, locomotion, IK, tools, character audio. Art/audio paths are injected by the scene |
 | Camera / actions | `camera/camera_rig.gd`, `actions/character_action_*.gd` | Follow camera, Gather/Mine/Chop/Build |
@@ -77,6 +77,7 @@ Game-specific code lives under `prototypes/walk-sandbox/scripts/`, not in the ad
 |-----|------|
 | `scripts/map/`, `scripts/terrain/`, `scripts/map_generator.gd`, `scripts/terrain_map.gd` | Procedural heightfield, rivers, lakes, landforms, meshes |
 | `scripts/world/` | Beacon, spawner, dev-console world commands |
+| `scripts/content/game_content.gd`, `data/content/` | Quests, dialogue, items, and resource nodes as JSON tables. Text is authored in English and translated by `data/ui_i18n.csv` |
 | `scripts/ui/` | Title, pause, settings, debug overlay |
 | `scripts/sky_time.gd`, `weather_*.gd` | Time of day, weather, lightning |
 
@@ -101,7 +102,7 @@ Package: `shell/src/game_utils_audio/`. Console script: `gu` only. Entry: `cli.p
 | `init` | `godot_project.py` | Copy `godot/templates/starter` + addons into a new directory |
 | `assets audit` / `assets credits` | `assets_audit.py` | License scan, `CREDITS.md` |
 | `data validate` / `data build` | `data_pipeline.py` | CSV/JSON tables and `*_i18n.csv`. Schema `refs` catch orphan ids, `i18n` columns must exist as translation keys, and `{token}` sets must match across locales. Build writes JSON, `i18n_manifest.json`, and a keep `.import` beside each localization CSV. Locale columns are the languages Settings shows |
-| `check` | `quality.py` | Addon parity, pytest, Godot import, `tests/test_runner.gd`, 30-frame smoke |
+| `check` | `quality.py` | Addon parity, pytest, data validation, Godot import, `tests/test_runner.gd`, 30-frame smoke |
 | `export` | `quality.py` | Headless export from `export_presets.cfg` (`--preset macOS` or `--preset Linux` in Walk Sandbox) |
 
 Paths (`paths.py`): repo root is two parents above the package file. Default Godot project is `prototypes/walk-sandbox`. Audio output is `output/sfx` and `output/bgm`.
@@ -118,6 +119,7 @@ Audio policy (`docs/sfx-direction.md`): prefer imported realistic packs. Builtin
 | New empty game | `godot/templates/starter/`, then `./start.sh init` |
 | Launch / CLI flags | `play.py`, `launcher.py`, `cli.py`, `start.sh` |
 | Data tables or languages | `data_pipeline.py` and the project's `data/` |
+| Quest, dialogue, item, or resource content | the project's `data/content/*.json`; add UI text keys to `data/ui_i18n.csv` |
 | Failing `gu check` | parity → sync addons; pytest → `shell/tests/`; Godot script error → the `.gd` named in the log |
 
 ## Invariants

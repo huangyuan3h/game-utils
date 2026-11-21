@@ -9,6 +9,7 @@ const SUITES := [
 	preload("res://tests/suites/character_suite.gd"),
 	preload("res://tests/suites/core_suite.gd"),
 	preload("res://tests/suites/world_suite.gd"),
+	preload("res://tests/suites/content_suite.gd"),
 	preload("res://tests/suites/systems_suite.gd"),
 	preload("res://tests/suites/ui_suite.gd"),
 	preload("res://tests/suites/finale_suite.gd"),
