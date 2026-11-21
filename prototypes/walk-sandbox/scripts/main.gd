@@ -31,6 +31,10 @@ var _dialogue_box: DialogueBox = null
 
 
 func _ready() -> void:
+	if OS.get_cmdline_user_args().has("--content-check"):
+		_report_content_tables()
+		get_tree().quit(0)
+		return
 	_register_ui_screens()
 	_setup_quests()
 	_setup_dialogue()
@@ -186,6 +190,19 @@ func apply_save_state(doc: Dictionary) -> void:
 
 func get_beacons() -> Array[WorldBeacon]:
 	return _beacons.duplicate()
+
+
+func _report_content_tables() -> void:
+	## Headless export check: proves `res://data/content` is readable inside a packaged build.
+	var db := GameContent.database()
+	print("[CONTENT] tables=%s rows=%d quests=%d dialogue=%d items=%d resources=%d" % [
+		",".join(db.table_names()),
+		db.total_rows(),
+		GameContent.quests().size(),
+		db.count("dialogue"),
+		GameContent.items().size(),
+		GameContent.resource_specs().size(),
+	])
 
 
 func _register_ui_screens() -> void:
