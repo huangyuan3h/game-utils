@@ -123,6 +123,7 @@ Audio policy (`docs/sfx-direction.md`): prefer imported realistic packs. Builtin
 | Launch / CLI flags | `play.py`, `launcher.py`, `cli.py`, `start.sh` |
 | Data tables or languages | `data_pipeline.py` and the project's `data/` |
 | Quest, dialogue, item, or resource content | the project's `data/content/*.json`; add UI text keys to `data/ui_i18n.csv` |
+| Release verification or packaging | `docs/stability.md`, then the project's `export_presets.cfg` |
 | Failing `gu check` | parity → sync addons; pytest → `shell/tests/`; Godot script error → the `.gd` named in the log |
 
 ## Invariants

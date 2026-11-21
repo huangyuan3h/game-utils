@@ -8,7 +8,7 @@ import pytest
 
 from game_utils_audio import cli
 from game_utils_audio.data_pipeline import validate_data_dir
-from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR, GODOT_STARTER_TEMPLATE_DIR
+from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR, GODOT_STARTER_TEMPLATE_DIR, REPO_ROOT
 from game_utils_audio.quality import (
     check_addons_parity,
     export_godot_project,
@@ -68,6 +68,14 @@ def test_parse_export_presets_and_export_dry_run(tmp_path: Path) -> None:
             out_path=tmp_path / "dist" / "game.x86_64",
             dry_run=True,
         )
+
+
+def test_cli_export_resolves_relative_paths_under_repo_root(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["export", "--preset", "macOS", "--out", "build/relative-test.zip", "--dry-run"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert str(REPO_ROOT / "build" / "relative-test.zip") in out
 
 
 def test_run_project_check_skip_subprocesses() -> None:

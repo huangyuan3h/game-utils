@@ -22,6 +22,7 @@ from game_utils_audio.paths import (
     BGM_OUTPUT_DIR,
     DEFAULT_GODOT_AUDIO_DIR,
     DEFAULT_GODOT_PROJECT_DIR,
+    REPO_ROOT,
     SFX_OUTPUT_DIR,
     ensure_output_dirs,
 )
@@ -322,12 +323,20 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def _repo_path(raw: str | None) -> Path | None:
+    """Resolve a CLI path against the repo root, so `start.sh` keeps one working directory."""
+    if raw is None:
+        return None
+    path = Path(raw).expanduser()
+    return path if path.is_absolute() else (REPO_ROOT / path)
+
+
 def _cmd_export(args: argparse.Namespace) -> int:
-    target = Path(args.project) if args.project else DEFAULT_GODOT_PROJECT_DIR
+    target = _repo_path(args.project) if args.project else DEFAULT_GODOT_PROJECT_DIR
     cmd = export_godot_project(
         target,
         preset=args.preset,
-        out_path=Path(args.out),
+        out_path=_repo_path(args.out),
         godot_bin=args.godot,
         debug=args.debug,
         dry_run=args.dry_run,

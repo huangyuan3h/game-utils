@@ -33,5 +33,9 @@ From the repository root:
 # headless quality gate (addon parity, pytest, Godot tests, smoke):
 ./start.sh check
 # packaged build (install the matching Godot export templates first):
-./start.sh export --preset macOS --out build/walk-sandbox.zip
+./start.sh export --preset macOS --out build/macos/walk-sandbox.zip
+# packaged content cannot silently go missing; this prints the loaded tables:
+"build/macos/unpacked/Walk Sandbox.app/Contents/MacOS/Walk Sandbox" --headless -- --content-check
 ```
+
+Package results and remaining release work are tracked in [`docs/stability.md`](../../docs/stability.md).
