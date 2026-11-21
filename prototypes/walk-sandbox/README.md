@@ -20,7 +20,7 @@ Reference Godot 4.6 3D prototype integrating `gu_core` and `gu_gameplay` on top 
 ## Architecture Highlights
 
 - **Shared Plugins**: `addons/gu_core` and `addons/gu_gameplay` synced from `godot/addons/` via `./start.sh addons sync`.
-- **Content**: quests, dialogue, items, and resource nodes live in `data/content/*.json`; `scripts/content/game_content.gd` builds typed definitions. Text uses `data/ui_i18n.csv` keys and renders through `tr()`.
+- **Content**: quests, dialogue, items, and resource nodes live in `data/content/*.json`; `gu_gameplay/content/game_content.gd` builds typed definitions. Text uses `data/ui_i18n.csv` keys and renders through `tr()`.
 - **World & Terrain**: `MapGenerator`, `MapData`, `WorldLocator`, `TerrainBuildContext`, and `WorldSpawner` / `WorldCommands`.
 - **Gameplay Loop**: `WorldBeacon` + `EventBus` -> `QuestTracker` + `FlagStore`; `ResourceNode` -> `HealthComponent` -> `PoolService`-backed `WorldPickup` -> `InventoryContainer` + `SaveService`.
 

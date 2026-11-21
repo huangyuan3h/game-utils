@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "table": "dialogue",
+  "rows": [
+    {
+      "id": "guide_intro",
+      "start": "greet",
+      "nodes": [
+        {
+          "id": "greet",
+          "speaker": "Guide",
+          "text": "Welcome. This plane is yours to build on.",
+          "effects": [
+            { "type": "emit_event", "event": "met_guide" }
+          ],
+          "choices": [
+            { "text": "What can I do here?", "next": "hint" },
+            { "text": "Farewell.", "next": "bye" }
+          ]
+        },
+        {
+          "id": "hint",
+          "speaker": "Guide",
+          "text": "WASD to move Shift to run Space to strike. Edit data/content to add quests and dialogue.",
+          "choices": [
+            { "text": "Thanks.", "next": "bye" }
+          ]
+        },
+        {
+          "id": "bye",
+          "speaker": "Guide",
+          "text": "Good luck."
+        }
+      ]
+    }
+  ]
+}

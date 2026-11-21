@@ -89,6 +89,27 @@ func _run_all() -> void:
 			boot_probe.free()
 		scene.free()
 
+	var content_quests := GameContent.quests()
+	_assert(content_quests.size() == 1 and content_quests[0].id == &"meet_guide", "Starter content defines the sample quest")
+	var guide_def := GameContent.dialogue(&"guide_intro")
+	_assert(guide_def != null and guide_def.is_valid(), "Starter guide dialogue loads")
+	var catalog := TranslationCatalog.new()
+	_assert(catalog.load_dir("res://data") == OK, "Starter localization loads")
+	_assert(catalog.message("zh", "Meet the Guide") == "与向导会面", "Starter content has a zh translation")
+	catalog.unload()
+
+	var full_scene := packed_scene.instantiate()
+	get_root().add_child(full_scene)
+	_assert(full_scene.get_node_or_null("Guide") != null, "Starter scene spawns the guide NPC")
+	_assert(full_scene.get_node_or_null("GameplayHud") != null, "Starter scene spawns the gameplay HUD")
+	var tracker := full_scene.get("_quests") as QuestTracker
+	_assert(tracker != null and tracker.is_active(&"meet_guide"), "Starter starts the sample quest")
+	var guide := full_scene.get_node_or_null("Guide") as DialogueInteractable
+	_assert(guide != null and guide.interact(full_scene.get_node("Player")), "Guide interaction opens dialogue")
+	_assert(tracker != null and tracker.is_completed(&"meet_guide"), "Guide dialogue completes the sample quest")
+	get_root().remove_child(full_scene)
+	full_scene.free()
+
 	var stats := StatSet.new()
 	stats.define_stat(&"hp", 100.0)
 	_assert(stats.spend(&"hp", 25.0) and is_equal_approx(stats.get_value(&"hp"), 75.0), "StatSet works in starter")

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "table": "items",
+  "rows": [
+    {
+      "id": "coin",
+      "display_name": "Coin",
+      "max_stack": 999,
+      "tags": ["currency"]
+    }
+  ]
+}

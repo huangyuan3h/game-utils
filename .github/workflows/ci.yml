@@ -67,6 +67,7 @@ jobs:
         run: |
           GODOT_BIN="$HOME/.cache/godot-ci/Godot_v${GODOT_VERSION}_linux.x86_64"
           uv run gu init /tmp/gu_starter_ci --name "CI Starter"
+          uv run gu data validate /tmp/gu_starter_ci/data
           "$GODOT_BIN" --headless --path /tmp/gu_starter_ci --import --quit-after 3
           "$GODOT_BIN" --headless --path /tmp/gu_starter_ci --script res://tests/test_runner.gd
           "$GODOT_BIN" --headless --path /tmp/gu_starter_ci --quit-after 15

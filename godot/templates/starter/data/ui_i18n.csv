@@ -57,3 +57,15 @@ SLOTS_OVERWRITE_BODY,Overwrite save slot '%s'?,覆盖存档「%s」？
 SLOTS_DELETE_TITLE,DELETE SAVE,删除存档
 SLOTS_DELETE_BODY,Permanently delete save slot '%s'?,永久删除存档「%s」？
 SLOTS_CANCEL,CANCEL,取消
+Meet the Guide,Meet the Guide,与向导会面
+Talk to the guide near the spawn point.,Talk to the guide near the spawn point.,和出生点附近的向导交谈。
+Talk to the Guide,Talk to the Guide,与向导交谈
+Guide,Guide,向导
+Welcome. This plane is yours to build on.,Welcome. This plane is yours to build on.,欢迎。这片场地随你搭建。
+What can I do here?,What can I do here?,我在这里能做什么？
+Farewell.,Farewell.,再见。
+WASD to move Shift to run Space to strike. Edit data/content to add quests and dialogue.,WASD to move Shift to run Space to strike. Edit data/content to add quests and dialogue.,WASD 移动，Shift 奔跑，Space 攻击。编辑 data/content 添加任务和对话。
+Thanks.,Thanks.,谢谢。
+Good luck.,Good luck.,好运。
+Coin,Coin,金币
+Stamina,Stamina,体力

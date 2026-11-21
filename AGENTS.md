@@ -24,7 +24,7 @@ Direct equivalent, from `shell/`: `uv run gu <same args>`.
 |------|------|--------|
 | `godot/addons/gu_core/` | Shared runtime plugin. Source of truth. | Yes |
 | `godot/addons/gu_gameplay/` | Shared gameplay classes. Source of truth. No autoloads. | Yes |
-| `godot/templates/starter/` | Files copied by `gu init` into a new game. Playable plane: `GuPlayer` + `CameraRig` wired to `GameFlow`. | Yes, when the scaffold should change |
+| `godot/templates/starter/` | Files copied by `gu init` into a new game. Playable plane with `GuPlayer` + `CameraRig`, a content-driven sample quest, guide dialogue, interaction prompt, and HUD. | Yes, when the scaffold should change |
 | `prototypes/walk-sandbox/` | Reference 3D game and the default test target. | Yes, for game-specific behavior |
 | `prototypes/walk-sandbox/addons/` | Generated copy of `godot/addons/`. | No. Sync it. |
 | `shell/src/game_utils_audio/` | Python CLI package. Name is historical; the command is `gu`. | Yes |
@@ -59,6 +59,7 @@ Engine: Godot 4.6, Forward Plus. Binary resolution (`find_godot_binary`): `--god
 | Surface audio | `audio/surface_resolver.gd`, `surface_audio_bank.gd` | Footstep surface → clip |
 | Stats / inventory | `stats/stat_set.gd`, `inventory/` | Stats, items, container |
 | Quests | `quests/flag_store.gd`, `quest_def.gd`, `quest_tracker.gd` | Flags and quest state |
+| Content | `content/game_content.gd` | Builds `QuestDef`, `DialogueDef`, `ItemDef`, and resource specs from `data/content/` |
 | Dialogue | `dialogue/dialogue_def.gd`, `dialogue_runner.gd`, `dialogue_box.gd`, `dialogue_interactable.gd` | Data, runner, UI |
 | AI | `ai/agent.gd`, `ai/enemy_body.gd`, `ai/navmesh_baker.gd` | Patrol/chase/leash state, navmesh-driven enemy sample, runtime ground bake |
 | World entities | `world/health_component.gd`, `world_pickup.gd`, `resource_node.gd` | Damage, drops, harvest nodes |
@@ -78,7 +79,7 @@ Game-specific code lives under `prototypes/walk-sandbox/scripts/`, not in the ad
 |-----|------|
 | `scripts/map/`, `scripts/terrain/`, `scripts/map_generator.gd`, `scripts/terrain_map.gd` | Procedural heightfield, rivers, lakes, landforms, meshes |
 | `scripts/world/` | Beacon, spawner, dev-console world commands |
-| `scripts/content/game_content.gd`, `data/content/` | Quests, dialogue, items, and resource nodes as JSON tables. Text is authored in English and translated by `data/ui_i18n.csv` |
+| `data/content/` | Quests, dialogue, items, and resource nodes as JSON tables, built into typed definitions by `gu_gameplay/content/game_content.gd`. Text is authored in English and translated by `data/ui_i18n.csv` |
 | `scripts/ui/` | Title, pause, settings, debug overlay |
 | `scripts/sky_time.gd`, `weather_*.gd` | Time of day, weather, lightning |
 
@@ -118,7 +119,7 @@ Audio policy (`docs/sfx-direction.md`): prefer imported realistic packs. Builtin
 | Reusable interaction, inventory, quest, dialogue, HUD widget | `godot/addons/gu_gameplay/`, then addon sync |
 | Enemy AI or navigation | `godot/addons/gu_gameplay/ai/`, then addon sync |
 | Terrain, player, weather, sandbox UI | `prototypes/walk-sandbox/scripts/` and its `scenes/` |
-| New empty game | `godot/templates/starter/`, then `./start.sh init` |
+| New empty game or starter content | `godot/templates/starter/`, then `./start.sh init` |
 | Launch / CLI flags | `play.py`, `launcher.py`, `cli.py`, `start.sh` |
 | Data tables or languages | `data_pipeline.py` and the project's `data/` |
 | Quest, dialogue, item, or resource content | the project's `data/content/*.json`; add UI text keys to `data/ui_i18n.csv` |

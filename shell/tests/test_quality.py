@@ -8,7 +8,7 @@ import pytest
 
 from game_utils_audio import cli
 from game_utils_audio.data_pipeline import validate_data_dir
-from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR
+from game_utils_audio.paths import DEFAULT_GODOT_PROJECT_DIR, GODOT_STARTER_TEMPLATE_DIR
 from game_utils_audio.quality import (
     check_addons_parity,
     export_godot_project,
@@ -23,6 +23,13 @@ def test_walk_sandbox_ships_export_presets() -> None:
 
 def test_walk_sandbox_content_data_validates() -> None:
     result = validate_data_dir(DEFAULT_GODOT_PROJECT_DIR / "data")
+    assert result.ok, result.errors
+    assert "content/quests.json" in result.tables
+    assert "content/dialogue.json" in result.tables
+
+
+def test_starter_template_content_data_validates() -> None:
+    result = validate_data_dir(GODOT_STARTER_TEMPLATE_DIR / "data")
     assert result.ok, result.errors
     assert "content/quests.json" in result.tables
     assert "content/dialogue.json" in result.tables
