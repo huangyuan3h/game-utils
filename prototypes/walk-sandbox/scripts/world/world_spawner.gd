@@ -168,3 +168,37 @@ static func spawn_elder(
 	markers_root.add_child(elder)
 	elder.position = Vector3(wx, wy, wz)
 	return elder
+
+
+static func spawn_enemies(
+	markers_root: Node3D,
+	terrain: Node,
+	player: Node3D,
+	prev: Array[GuEnemy]
+) -> Array[GuEnemy]:
+	for enemy in prev:
+		if is_instance_valid(enemy):
+			if enemy.get_parent() != null:
+				enemy.get_parent().remove_child(enemy)
+			enemy.queue_free()
+
+	var spawned: Array[GuEnemy] = []
+	if markers_root == null or player == null:
+		return spawned
+
+	var offsets := [Vector2(6.0, 3.0), Vector2(-5.0, -6.0)]
+	for i in offsets.size():
+		var offset := offsets[i] as Vector2
+		var pos := player.global_position + Vector3(offset.x, 0.0, offset.y)
+		if terrain != null and terrain.has_method("sample_height"):
+			pos.y = float(terrain.call("sample_height", pos.x, pos.z))
+
+		var enemy := GuEnemy.new()
+		enemy.name = "Enemy%d" % (i + 1)
+		enemy.max_hp = 45.0
+		enemy.model_path = "res://assets/models/walker.glb"
+		enemy.setup(terrain, player, pos)
+		markers_root.add_child(enemy)
+		spawned.append(enemy)
+
+	return spawned

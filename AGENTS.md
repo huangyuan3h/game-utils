@@ -55,11 +55,12 @@ Engine: Godot 4.6, Forward Plus. Binary resolution (`find_godot_binary`): `--god
 | Data | `gu_core/data/data_table_loader.gd`, `gu_core/data/content_database.gd`, `gu_core/i18n/translation_catalog.gd` | JSON tables, indexed content rows, CSV locales |
 | Interaction | `gu_gameplay/interaction/` | `Interactable`, `Interactor` |
 | Character | `gu_gameplay/character/` | `GuPlayer`, locomotion, IK, tools, character audio. Art/audio paths are injected by the scene |
-| Camera / actions | `camera/camera_rig.gd`, `actions/character_action_*.gd` | Follow camera, Gather/Mine/Chop/Build |
+| Camera / actions | `camera/camera_rig.gd`, `actions/character_action_*.gd` | Follow camera, Gather/Mine/Chop/Build/Strike |
 | Surface audio | `audio/surface_resolver.gd`, `surface_audio_bank.gd` | Footstep surface → clip |
 | Stats / inventory | `stats/stat_set.gd`, `inventory/` | Stats, items, container |
 | Quests | `quests/flag_store.gd`, `quest_def.gd`, `quest_tracker.gd` | Flags and quest state |
 | Dialogue | `dialogue/dialogue_def.gd`, `dialogue_runner.gd`, `dialogue_box.gd`, `dialogue_interactable.gd` | Data, runner, UI |
+| AI | `ai/agent.gd`, `ai/enemy_body.gd`, `ai/navmesh_baker.gd` | Patrol/chase/leash state, navmesh-driven enemy sample, runtime ground bake |
 | World entities | `world/health_component.gd`, `world_pickup.gd`, `resource_node.gd` | Damage, drops, harvest nodes |
 | HUD | `ui/gameplay_hud.gd`, `stat_bar.gd`, `inventory_panel.gd`, `quest_hud.gd` | In-game panels |
 
@@ -115,6 +116,7 @@ Audio policy (`docs/sfx-direction.md`): prefer imported realistic packs. Builtin
 |------|--------|
 | Shared singleton, save, input, UI shell, audio bus | `godot/addons/gu_core/`, then addon sync |
 | Reusable interaction, inventory, quest, dialogue, HUD widget | `godot/addons/gu_gameplay/`, then addon sync |
+| Enemy AI or navigation | `godot/addons/gu_gameplay/ai/`, then addon sync |
 | Terrain, player, weather, sandbox UI | `prototypes/walk-sandbox/scripts/` and its `scenes/` |
 | New empty game | `godot/templates/starter/`, then `./start.sh init` |
 | Launch / CLI flags | `play.py`, `launcher.py`, `cli.py`, `start.sh` |

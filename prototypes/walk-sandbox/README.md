@@ -9,6 +9,7 @@ Reference Godot 4.6 3D prototype integrating `gu_core` and `gu_gameplay` on top 
 - **Shift**: toggle run
 - **E**: interact with world beacons and harvestable resource nodes
 - **1 / 2 / 3 / 4** (`F` repeat, `X` cancel): Gather / Mine / Chop / Build actions
+- **Space**: strike (damages enemies in front)
 - **Scroll / Pinch / `+` `-`**: camera zoom
 - **T / Y / L**: cycle time speed / weather / trigger lightning
 - **G / V**: generate new random map / cycle landform archetype

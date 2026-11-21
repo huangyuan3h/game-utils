@@ -73,6 +73,21 @@ static func create_default() -> CharacterActionRegistry:
 		"ik_profile": "build",
 		"clip_hint": "Working",
 	}))
+	reg.register(CharacterActionSpec.new({
+		"id": "strike",
+		"display_name": "STRIKE",
+		"category": "combat",
+		"duration": 0.55,
+		"windup_ratio": 0.34,
+		"recover_ratio": 0.30,
+		"hit_phases": [0.50],
+		"looping": false,
+		"move_policy": CharacterActionSpec.MovePolicy.LOCK,
+		"allow_in_water": true,
+		"tool_type": CharacterActionSpec.ToolType.NONE,
+		"ik_profile": "strike",
+		"clip_hint": "Working",
+	}))
 	return reg
 
 

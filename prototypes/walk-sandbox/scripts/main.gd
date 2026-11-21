@@ -7,6 +7,7 @@ extends Node3D
 @onready var _markers_root: Node3D = $Markers
 @onready var _sky_time: Node3D = $SkyTime
 @onready var _terrain: Node3D = $TerrainMap
+@onready var _nav_region: NavigationRegion3D = $NavRegion
 @onready var _prompt_panel: PanelContainer = get_node_or_null("%InteractionPromptPanel") as PanelContainer
 @onready var _prompt_label: Label = get_node_or_null("%InteractionPromptLabel") as Label
 
@@ -22,6 +23,7 @@ var _pending_lit_beacon_ids: Array[String] = []
 var _pending_resource_states: Dictionary = {}
 var _beacons: Array[WorldBeacon] = []
 var _resource_nodes: Array[ResourceNode] = []
+var _enemies: Array[GuEnemy] = []
 var _focused_interactable: Interactable = null
 var _flags := FlagStore.new()
 var _quests := QuestTracker.new()
@@ -45,6 +47,8 @@ func _ready() -> void:
 		var interactor := _player.call("get_interactor") as Interactor
 		if interactor != null and not interactor.focus_changed.is_connected(_on_interactor_focus_changed):
 			interactor.focus_changed.connect(_on_interactor_focus_changed)
+	if _player.has_signal("player_died"):
+		_player.connect("player_died", _on_player_died)
 	_setup_gameplay_hud()
 	if _sky_time != null and _sky_time.has_method("set_context"):
 		_sky_time.call("set_context", _terrain, _player)
@@ -95,6 +99,15 @@ func _process(_delta: float) -> void:
 		_terrain.call("apply_weather", _sky_time.call("get_weather_params"))
 	_refresh_interaction_prompt()
 	_refresh_overlay()
+	_refresh_enemy_targets()
+
+
+func _refresh_enemy_targets() -> void:
+	var flow := get_node_or_null("/root/GameFlow")
+	var playing := flow != null and int(flow.call("get_state")) == 3
+	for enemy in _enemies:
+		if is_instance_valid(enemy):
+			enemy.set_target(_player if playing else null)
 
 
 func start_new_world(opts: Dictionary = {}) -> void:
@@ -219,6 +232,8 @@ func _place_player_on_terrain() -> void:
 				_player.call("set_facing_yaw", float(_pending_spawn_override.get("facing_yaw", 0.0)))
 			if _player.has_method("set_run_mode"):
 				_player.call("set_run_mode", bool(_pending_spawn_override.get("run_mode", false)))
+			if _player.has_method("set_spawn_point"):
+				_player.call("set_spawn_point", _player.global_position)
 			_pending_spawn_override.clear()
 			return
 
@@ -230,10 +245,13 @@ func _place_player_on_terrain() -> void:
 		spawn = WorldLocatorScript.find_spawn_point(data)
 	_player.global_position = spawn
 	_player.velocity = Vector3.ZERO
+	if _player.has_method("set_spawn_point"):
+		_player.call("set_spawn_point", spawn)
 
 
 func _rebuild_world_entities() -> void:
 	_focused_interactable = null
+	_rebuild_navigation()
 	_beacons = WorldSpawner.spawn_beacons(
 		_markers_root,
 		_terrain,
@@ -252,6 +270,22 @@ func _rebuild_world_entities() -> void:
 	)
 	_pending_resource_states.clear()
 	WorldSpawner.spawn_elder(_markers_root, _terrain, _player.global_position, GameContent.dialogue(&"elder_intro"))
+	_enemies = WorldSpawner.spawn_enemies(_markers_root, _terrain, _player, _enemies)
+
+
+func _rebuild_navigation() -> void:
+	if _nav_region == null or _terrain == null:
+		return
+	var ground := _terrain.get_node_or_null("Mesh") as MeshInstance3D
+	if ground == null or ground.mesh == null:
+		return
+	var started := Time.get_ticks_msec()
+	var baked := NavMeshBaker.bake(_nav_region, ground)
+	GuLog.info("Nav", "navmesh bake=%s elapsed=%dms polygons=%d" % [
+		str(baked),
+		Time.get_ticks_msec() - started,
+		_nav_region.navigation_mesh.get_polygon_count() if _nav_region.navigation_mesh != null else 0,
+	])
 
 
 func _register_content() -> void:
@@ -381,7 +415,15 @@ func _setup_gameplay_hud() -> void:
 	var hud := GameplayHud.new()
 	hud.name = "GameplayHud"
 	add_child(hud)
-	hud.bind_player_hud(stats, &"stamina", inv, _quests, "Stamina")
+	hud.bind_player_hud(stats, &"hp", inv, _quests, tr("Health"))
+	hud.add_stat_bar(stats, &"stamina", tr("Stamina"))
+
+
+func _on_player_died() -> void:
+	var flow := get_node_or_null("/root/GameFlow")
+	var ui := get_node_or_null("/root/UIRouter")
+	if flow != null and int(flow.call("get_state")) == 3 and ui != null and ui.has_method("show_toast"):
+		ui.call("show_toast", tr("You were defeated."), 2.4, &"warning")
 
 
 func _refresh_overlay() -> void:

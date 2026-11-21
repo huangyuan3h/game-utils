@@ -3,14 +3,25 @@ class_name GuPlayer
 ## Shared player coordinator: reads input, steps CharacterActionController & CharacterLocomotion,
 ## and drives Visual / Audio / Headlight. Art and audio paths are supplied by the owning scene.
 
+signal player_died
+signal player_respawned
+
 const ACTION_BINDINGS := {
 	"action_gather": &"gather",
 	"action_mine": &"mine",
 	"action_chop": &"chop",
 	"action_build": &"build",
+	"action_strike": &"strike",
 }
 const STAMINA_MAX := 100.0
 const STAMINA_REGEN := 15.0
+const STRIKE_RANGE := 2.4
+const STRIKE_DOT := 0.35
+
+@export_group("Combat")
+@export var max_hp: float = 100.0
+@export var strike_damage: float = 18.0
+@export var respawn_delay: float = 2.0
 
 @export_group("Character Assets")
 ## Rigged model with Idle/Walk/Run/Working clips (FBX or glTF scene).
@@ -39,10 +50,17 @@ var _visual: CharacterVisual
 var _audio: CharacterAudio
 var _head_light: NightHeadlight
 var _interactor: Interactor
+var _health: HealthComponent = null
+var _hurtbox: Hurtbox = null
+var _hitbox: Hitbox = null
+var _spawn_position := Vector3.ZERO
+var _dead := false
 
 
 func _ready() -> void:
 	_stats.define_stat(&"stamina", STAMINA_MAX)
+	_spawn_position = global_position
+	_ensure_combat()
 	_ensure_input_map()
 	collision_mask = 0
 	collision_layer = 0
@@ -132,6 +150,22 @@ func set_run_mode(enabled: bool) -> void:
 	_run_mode = enabled
 
 
+func is_alive() -> bool:
+	return _health == null or not _health.is_dead()
+
+
+func set_spawn_point(point: Vector3) -> void:
+	_spawn_position = point
+
+
+func get_health() -> HealthComponent:
+	return _health
+
+
+func get_hurtbox() -> Hurtbox:
+	return _hurtbox
+
+
 func get_facing_yaw() -> float:
 	return _locomotion.facing_yaw
 
@@ -213,7 +247,10 @@ func _on_action_beat(action_id: StringName, beat_index: int, cycle_count: int) -
 		_visual.trigger_action_beat(action_id)
 	if _audio != null:
 		_audio.play_action_beat(action_id)
-	_apply_action_beat_to_nearby_resource(action_id)
+	if action_id == &"strike":
+		_apply_strike_beat()
+	else:
+		_apply_action_beat_to_nearby_resource(action_id)
 	var bus := get_node_or_null("/root/EventBus")
 	if bus != null and bus.has_method("emit_event"):
 		bus.call("emit_event", &"character_action_beat", {
@@ -250,6 +287,71 @@ func _apply_action_beat_to_nearby_resource(action_id: StringName) -> void:
 		best.apply_harvest_hit(self)
 
 
+func _apply_strike_beat() -> void:
+	if not is_inside_tree() or _hitbox == null:
+		return
+	var forward := Vector3(-sin(_locomotion.facing_yaw), 0.0, -cos(_locomotion.facing_yaw))
+	var best: Hurtbox = null
+	var best_d2 := STRIKE_RANGE * STRIKE_RANGE
+	for node in get_tree().get_nodes_in_group(GuEnemy.GROUP_NAME):
+		if not (node is GuEnemy) or (node as GuEnemy).is_dead():
+			continue
+		var hurtbox := (node as GuEnemy).get_hurtbox()
+		if hurtbox == null:
+			continue
+		var offset := hurtbox.global_position - global_position
+		offset.y = 0.0
+		var d2 := offset.length_squared()
+		if d2 > best_d2:
+			continue
+		if d2 > 0.01 and forward.dot(offset.normalized()) < STRIKE_DOT:
+			continue
+		best_d2 = d2
+		best = hurtbox
+	if best != null:
+		_hitbox.strike(best, false, forward)
+
+
+func _ensure_combat() -> void:
+	_health = get_node_or_null("Health") as HealthComponent
+	if _health != null:
+		_health.bind_stat_set(_stats, true)
+		_health.max_hp = max_hp
+		if not _health.died.is_connected(_on_player_died):
+			_health.died.connect(_on_player_died)
+	_hurtbox = get_node_or_null("Hurtbox") as Hurtbox
+	if _hurtbox != null:
+		_hurtbox.faction = &"player"
+		_hurtbox.health = _health
+	_hitbox = get_node_or_null("Hitbox") as Hitbox
+	if _hitbox != null:
+		_hitbox.faction = &"player"
+		_hitbox.damage = strike_damage
+
+
+func _on_player_died(_source: Node) -> void:
+	if _dead:
+		return
+	_dead = true
+	player_died.emit()
+	set_physics_process(false)
+	if _visual_root != null:
+		_visual_root.visible = false
+	await get_tree().create_timer(maxf(0.2, respawn_delay)).timeout
+	if not is_inside_tree():
+		return
+	_dead = false
+	global_position = _spawn_position
+	velocity = Vector3.ZERO
+	_locomotion.reset()
+	if _visual_root != null:
+		_visual_root.visible = true
+	if _health != null:
+		_health.revive(true)
+	player_respawned.emit()
+	set_physics_process(true)
+
+
 func _tick_stamina(delta: float) -> void:
 	# Shift toggles run and keeps it. An empty stamina bar must not force a walk.
 	_stats.modify_value(&"stamina", STAMINA_REGEN * delta)
@@ -281,6 +383,7 @@ func _ensure_input_map() -> void:
 		router.call("register_action", &"action_mine", [KEY_2], "Action: Mine")
 		router.call("register_action", &"action_chop", [KEY_3], "Action: Chop")
 		router.call("register_action", &"action_build", [KEY_4], "Action: Build")
+		router.call("register_action", &"action_strike", [KEY_SPACE], "Strike")
 		router.call("register_action", &"action_repeat", [KEY_F], "Repeat Action")
 		router.call("register_action", &"action_cancel", [KEY_X], "Cancel Action")
 	else:
@@ -293,6 +396,7 @@ func _ensure_input_map() -> void:
 		_bind("action_mine", [KEY_2])
 		_bind("action_chop", [KEY_3])
 		_bind("action_build", [KEY_4])
+		_bind("action_strike", [KEY_SPACE])
 		_bind("action_repeat", [KEY_F])
 		_bind("action_cancel", [KEY_X])
 
