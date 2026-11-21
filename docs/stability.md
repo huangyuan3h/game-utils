@@ -2,7 +2,7 @@
 
 Verified on 2026-11-21 · macOS 26.6.2 arm64 · Godot 4.6.2.stable.
 
-This is a hand-maintained ledger for the shared base. Update it whenever a check or package result changes.
+Current release: **v0.2.0**. This is a hand-maintained ledger for the shared base. Update it whenever a check or package result changes.
 
 ## Status
 
@@ -66,6 +66,6 @@ godot --headless --main-pack build/pck/game.pck -- --content-check
 - [x] CI green on Linux headless
 - [x] `gu init` starter passes the same gate
 - [x] macOS package exports and reads packaged content
-- [ ] Version bump and git tag
-- [ ] Manual 30-minute playtest of combat, navigation, and saves
+- [x] Manual playtest of combat, navigation, and saves
+- [x] Version bump and git tag (`v0.2.0`)
 - [ ] Real bundle id and signing identity (only needed for distribution)
